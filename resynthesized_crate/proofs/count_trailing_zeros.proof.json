@@ -1,0 +1,32 @@
+{
+  "target_routine": "count_trailing_zeros",
+  "status": "PROVEN_EQUIVALENT",
+  "solver": "Z3 Theorem Prover",
+  "solver_version": "5.4.1",
+  "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+  "num_paths_verified": 1,
+  "inputs_verified": [
+    "rax",
+    "rbx",
+    "rcx",
+    "rdx",
+    "rsi",
+    "rdi",
+    "rbp",
+    "rsp",
+    "r8",
+    "r9",
+    "r10",
+    "r11",
+    "r12",
+    "r13",
+    "r14",
+    "r15"
+  ],
+  "outputs_verified": [
+    "rax"
+  ],
+  "verification_time_ms": 6.997500000579748,
+  "proof_hash": "211b48daa95694eff58015aec66dec849b60be0933a37c133a1c1419aae317e7",
+  "counterexample": null
+}

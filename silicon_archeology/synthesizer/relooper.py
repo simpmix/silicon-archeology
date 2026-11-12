@@ -39,7 +39,16 @@ class Relooper:
         elif isinstance(expr, UnaryExpr):
             if expr.op == Op.POPCNT:
                 inner = self._convert_expr_to_rust(expr.operand)
-                return RustCast(RustMethodCall(inner, "count_ones"), "u64")
+                return RustCast(RustMethodCall(inner, "count_ones"), "u64" if expr.bit_width == 64 else "u32")
+            elif expr.op == Op.CTZ:
+                inner = self._convert_expr_to_rust(expr.operand)
+                return RustCast(RustMethodCall(inner, "trailing_zeros"), "u64" if expr.bit_width == 64 else "u32")
+            elif expr.op == Op.CLZ:
+                inner = self._convert_expr_to_rust(expr.operand)
+                return RustCast(RustMethodCall(inner, "leading_zeros"), "u64" if expr.bit_width == 64 else "u32")
+            elif expr.op == Op.BSWAP:
+                inner = self._convert_expr_to_rust(expr.operand)
+                return RustMethodCall(inner, "swap_bytes")
             op_map = {Op.NOT: "!", Op.NEG: "-"}
             return RustUnaryOp(op_map.get(expr.op, "!"), self._convert_expr_to_rust(expr.operand))
         elif isinstance(expr, BinaryExpr):
@@ -59,8 +68,8 @@ class Relooper:
                 return RustMethodCall(left_r, "rotate_right", [arg])
 
             op_map = {
-                Op.ADD: "+", Op.SUB: "-", Op.MUL: "*", Op.DIV: "/",
-                Op.REM: "%", Op.AND: "&", Op.OR: "|", Op.XOR: "^",
+                Op.ADD: "+", Op.SUB: "-", Op.MUL: "*", Op.DIV: "/", Op.UDIV: "/",
+                Op.REM: "%", Op.UREM: "%", Op.AND: "&", Op.OR: "|", Op.XOR: "^",
                 Op.SHL: "<<", Op.SHR: ">>", Op.SAR: ">>",
                 Op.EQ: "==", Op.NE: "!=", Op.LT: "<", Op.LE: "<=",
                 Op.GT: ">", Op.GE: ">=", Op.ULT: "<", Op.ULE: "<=",
@@ -71,10 +80,11 @@ class Relooper:
             right_r = self._convert_expr_to_rust(expr.right)
             return RustBinaryOp(op_str, left_r, right_r)
         elif isinstance(expr, ExtractExpr):
-            # Extract can be modeled as (expr >> low) & mask
             shift = expr.low
-            mask = (1 << expr.bit_width) - 1
             inner_r = self._convert_expr_to_rust(expr.expr)
+            if shift == 0 and expr.bit_width == 64:
+                return inner_r
+            mask = (1 << expr.bit_width) - 1
             if shift > 0:
                 inner_r = RustBinaryOp(">>", inner_r, RustLiteral(shift))
             return RustBinaryOp("&", inner_r, RustLiteral(mask))
@@ -85,8 +95,16 @@ class Relooper:
                 return RustBinaryOp("&", low_r, RustLiteral(mask))
             acc = self._convert_expr_to_rust(expr.parts[0])
             for p in expr.parts[1:]:
-                acc = RustBinaryOp("<<", acc, RustLiteral(p.bit_width))
-                acc = RustBinaryOp("|", acc, self._convert_expr_to_rust(p))
+                if p.bit_width >= 64:
+                    acc = RustCast(acc, "u128")
+                    acc = RustBinaryOp("<<", acc, RustLiteral(p.bit_width))
+                    p_rust = RustCast(self._convert_expr_to_rust(p), "u128")
+                    acc = RustBinaryOp("|", acc, p_rust)
+                else:
+                    acc = RustBinaryOp("<<", acc, RustLiteral(p.bit_width))
+                    acc = RustBinaryOp("|", acc, self._convert_expr_to_rust(p))
+            if expr.bit_width <= 64 and any(p.bit_width >= 64 for p in expr.parts[1:]):
+                acc = RustCast(acc, "u64")
             return acc
         elif isinstance(expr, IteExpr):
             cond_r = self._convert_expr_to_rust(expr.cond)

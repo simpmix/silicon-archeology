@@ -55,6 +55,41 @@ ROUTINES = [
         "name": "rc4_prga_step",
         "bytes": bytes.fromhex("ff c7 81 e7 ff 00 00 00 01 d6 81 e6 ff 00 00 00 48 89 f0 c3"),
         "doc": "RC4 stream cipher pseudo-random generation algorithm state index step."
+    },
+    {
+        "name": "reset_lowest_bit",
+        "bytes": bytes.fromhex("c4 e2 f8 f3 cf c3"),
+        "doc": "Reset lowest set bit via BMI1 BLSR instruction."
+    },
+    {
+        "name": "and_not",
+        "bytes": bytes.fromhex("c4 e2 c0 f2 c6 c3"),
+        "doc": "Bitwise AND NOT ((!a) & b) via BMI1 ANDN instruction."
+    },
+    {
+        "name": "count_trailing_zeros",
+        "bytes": bytes.fromhex("f3 48 0f bc c7 c3"),
+        "doc": "Count trailing zero bits via hardware TZCNT instruction."
+    },
+    {
+        "name": "count_leading_zeros",
+        "bytes": bytes.fromhex("f3 48 0f bd c7 c3"),
+        "doc": "Count leading zero bits via hardware LZCNT instruction."
+    },
+    {
+        "name": "byte_swap_64",
+        "bytes": bytes.fromhex("48 89 f8 48 0f c8 c3"),
+        "doc": "64-bit endian byte swap via BSWAP instruction."
+    },
+    {
+        "name": "clamp_val",
+        "bytes": bytes.fromhex("48 39 f7 48 0f 4c fe 48 39 d7 48 0f 4f fa 48 89 f8 c3"),
+        "doc": "Branchless signed range clamp [min, max] via CMOVcc instructions."
+    },
+    {
+        "name": "unsigned_divide",
+        "bytes": bytes.fromhex("48 89 f8 48 31 d2 48 f7 f6 c3"),
+        "doc": "Unsigned 64-bit integer division via DIV instruction."
     }
 ]
 
@@ -178,6 +213,46 @@ mod tests {
         let k1 = 0x89ABCDEFu64;
         let res = tea_round(v0, v1, sum, k0, k1);
         assert!(res > 0);
+    }
+
+    #[test]
+    fn test_reset_lowest_bit() {
+        assert_eq!(reset_lowest_bit(0b1100), 0b1000);
+        assert_eq!(reset_lowest_bit(20), 16);
+    }
+
+    #[test]
+    fn test_and_not() {
+        assert_eq!(and_not(0b1010, 0b1100), 0b0100);
+    }
+
+    #[test]
+    fn test_count_trailing_zeros() {
+        assert_eq!(count_trailing_zeros(16), 4);
+        assert_eq!(count_trailing_zeros(1), 0);
+    }
+
+    #[test]
+    fn test_count_leading_zeros() {
+        assert_eq!(count_leading_zeros(1), 63);
+        assert_eq!(count_leading_zeros(0x8000000000000000), 0);
+    }
+
+    #[test]
+    fn test_byte_swap_64() {
+        assert_eq!(byte_swap_64(0x0102030405060708), 0x0807060504030201);
+    }
+
+    #[test]
+    fn test_clamp_val() {
+        assert_eq!(clamp_val(10, 20, 30), 20);
+        assert_eq!(clamp_val(25, 20, 30), 25);
+        assert_eq!(clamp_val(35, 20, 30), 30);
+    }
+
+    #[test]
+    fn test_unsigned_divide() {
+        assert_eq!(unsigned_divide(100, 7), 14);
     }
 }
 """

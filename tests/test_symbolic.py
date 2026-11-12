@@ -119,3 +119,42 @@ def test_symbolic_executor_multi_path():
     s2.add(in_rdi == 5)
     s2.add(tf.combined_outputs["rax"] != 200)
     assert s2.check() == z3.unsat
+
+
+def test_symbolic_ctz_clz_bswap():
+    cfg = ControlFlowGraph(entry_label="entry")
+    bb = cfg.get_or_create_block("entry")
+    rdi = Var("rdi", 64)
+    rax = Var("rax", 64)
+    # rax = ctz(rdi)
+    bb.add_stmt(Assign(rax, UnaryExpr(Op.CTZ, rdi, 64)))
+    bb.add_stmt(Return(rax))
+
+    executor = SymbolicExecutor(cfg)
+    tf = executor.compute_transfer_function(function_name="ctz_calc")
+    assert "rax" in tf.combined_outputs
+
+    s = z3.Solver()
+    in_rdi = tf.input_symbols["rdi"]
+    # For rdi = 0b1000 (8), ctz is 3
+    s.add(in_rdi == 8)
+    s.add(tf.combined_outputs["rax"] != 3)
+    assert s.check() == z3.unsat
+
+
+def test_symbolic_bmi_blsr():
+    from silicon_archeology.lifter.x86_lifter import X86Lifter
+    # blsr rax, rdi; ret
+    code = bytes.fromhex("c4 e2 f8 f3 cf c3")
+    lifter = X86Lifter(mode=64)
+    cfg = lifter.lift_bytes(code)
+    executor = SymbolicExecutor(cfg)
+    tf = executor.compute_transfer_function(function_name="blsr_fn")
+    assert "rax" in tf.combined_outputs
+
+    s = z3.Solver()
+    in_rdi = tf.input_symbols["rdi"]
+    # For rdi = 12 (0b1100), blsr gives 8 (0b1000)
+    s.add(in_rdi == 12)
+    s.add(tf.combined_outputs["rax"] != 8)
+    assert s.check() == z3.unsat

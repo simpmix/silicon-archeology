@@ -127,6 +127,52 @@ pub fn rc4_prga_step(mut a: u64, mut b: u64, mut c: u64) -> u64 {
     return rax;
 }
 
+/// Resets the lowest set bit using `x & x.wrapping_sub(1)` (BMI1 BLSR).
+pub fn reset_lowest_bit(x: u64) -> u64 {
+    return (x & x.wrapping_sub(1));
+}
+
+/// Computes bitwise `(!a) & b` using BMI1 ANDN.
+pub fn and_not(a: u64, b: u64) -> u64 {
+    return ((!a) & b);
+}
+
+/// Counts trailing zeros using Rust std `trailing_zeros()`.
+pub fn count_trailing_zeros(x: u64) -> u64 {
+    return (x.trailing_zeros() as u64);
+}
+
+/// Counts leading zeros using Rust std `leading_zeros()`.
+pub fn count_leading_zeros(x: u64) -> u64 {
+    return (x.leading_zeros() as u64);
+}
+
+/// Reverses the byte order of the integer using Rust std `swap_bytes()`.
+pub fn byte_swap_64(x: u64) -> u64 {
+    return x.swap_bytes();
+}
+
+/// Clamps value into range [min_val, max_val].
+pub fn clamp_val(val: i64, min_val: i64, max_val: i64) -> i64 {
+    return val.clamp(min_val, max_val);
+}
+
+/// Formally synthesized routine `unsigned_divide`.
+/// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
+pub fn unsigned_divide(mut a: u64, mut b: u64) -> u64 {
+    let mut rax: u64 = 0;
+    let mut c: u64 = 0;
+    // mov rax, rdi
+    rax = a;
+    // xor rdx, rdx
+    c = (c ^ c);
+    // div rsi
+    rax = (rax / b);
+    c = (rax % b);
+    // ret 
+    return rax;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,5 +214,45 @@ mod tests {
         let k1 = 0x89ABCDEFu64;
         let res = tea_round(v0, v1, sum, k0, k1);
         assert!(res > 0);
+    }
+
+    #[test]
+    fn test_reset_lowest_bit() {
+        assert_eq!(reset_lowest_bit(0b1100), 0b1000);
+        assert_eq!(reset_lowest_bit(20), 16);
+    }
+
+    #[test]
+    fn test_and_not() {
+        assert_eq!(and_not(0b1010, 0b1100), 0b0100);
+    }
+
+    #[test]
+    fn test_count_trailing_zeros() {
+        assert_eq!(count_trailing_zeros(16), 4);
+        assert_eq!(count_trailing_zeros(1), 0);
+    }
+
+    #[test]
+    fn test_count_leading_zeros() {
+        assert_eq!(count_leading_zeros(1), 63);
+        assert_eq!(count_leading_zeros(0x8000000000000000), 0);
+    }
+
+    #[test]
+    fn test_byte_swap_64() {
+        assert_eq!(byte_swap_64(0x0102030405060708), 0x0807060504030201);
+    }
+
+    #[test]
+    fn test_clamp_val() {
+        assert_eq!(clamp_val(10, 20, 30), 20);
+        assert_eq!(clamp_val(25, 20, 30), 25);
+        assert_eq!(clamp_val(35, 20, 30), 30);
+    }
+
+    #[test]
+    fn test_unsigned_divide() {
+        assert_eq!(unsigned_divide(100, 7), 14);
     }
 }

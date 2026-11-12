@@ -120,3 +120,84 @@ def test_lifter_push_pop():
     assert "pop" in mnemonics
     assert not any("UNHANDLED" in getattr(s, "text", "") for s in stmts)
 
+
+def test_lifter_bmi1_and_bmi2_instructions():
+    lifter = X86Lifter(mode=64)
+    # blsr rax, rdi; andn rax, rdi, rsi; bextr rax, rdi, rsi; ret
+    code = bytes.fromhex("c4 e2 f8 f3 cf c4 e2 c0 f2 c6 c4 e2 c8 f7 c7 c3")
+    cfg = lifter.lift_bytes(code, base_address=0x1000)
+    stmts = cfg.blocks[cfg.entry_label].stmts
+    mnemonics = [s.text.split()[0] for s in stmts if hasattr(s, "text")]
+    assert "blsr" in mnemonics
+    assert "andn" in mnemonics
+    assert "bextr" in mnemonics
+    assert not any("UNHANDLED" in getattr(s, "text", "") for s in stmts)
+
+
+def test_lifter_bit_counting_and_scans():
+    lifter = X86Lifter(mode=64)
+    # tzcnt rax, rdi; lzcnt rax, rdi; bsf rax, rdi; bsr rax, rdi; ret
+    code = bytes.fromhex("f3 48 0f bc c7 f3 48 0f bd c7 48 0f bc c7 48 0f bd c7 c3")
+    cfg = lifter.lift_bytes(code, base_address=0x1000)
+    stmts = cfg.blocks[cfg.entry_label].stmts
+    mnemonics = [s.text.split()[0] for s in stmts if hasattr(s, "text")]
+    assert "tzcnt" in mnemonics
+    assert "lzcnt" in mnemonics
+    assert "bsf" in mnemonics
+    assert "bsr" in mnemonics
+    assert not any("UNHANDLED" in getattr(s, "text", "") for s in stmts)
+
+
+def test_lifter_bit_tests():
+    lifter = X86Lifter(mode=64)
+    # bt rdi, 5; bts rdi, 5; btr rdi, 5; btc rdi, 5; ret
+    code = bytes.fromhex("48 0f ba e7 05 48 0f ba ef 05 48 0f ba f7 05 48 0f ba ff 05 c3")
+    cfg = lifter.lift_bytes(code, base_address=0x1000)
+    stmts = cfg.blocks[cfg.entry_label].stmts
+    mnemonics = [s.text.split()[0] for s in stmts if hasattr(s, "text")]
+    assert "bt" in mnemonics
+    assert "bts" in mnemonics
+    assert "btr" in mnemonics
+    assert "btc" in mnemonics
+    assert not any("UNHANDLED" in getattr(s, "text", "") for s in stmts)
+
+
+def test_lifter_sign_extensions_and_division():
+    lifter = X86Lifter(mode=64)
+    # cdq; cqo; cdqe; div rsi; idiv rsi; ret
+    code = bytes.fromhex("99 48 99 48 98 48 f7 f6 48 f7 fe c3")
+    cfg = lifter.lift_bytes(code, base_address=0x1000)
+    stmts = cfg.blocks[cfg.entry_label].stmts
+    mnemonics = [s.text.split()[0] for s in stmts if hasattr(s, "text")]
+    assert "cdq" in mnemonics
+    assert "cqo" in mnemonics
+    assert "cdqe" in mnemonics
+    assert "div" in mnemonics
+    assert "idiv" in mnemonics
+    assert not any("UNHANDLED" in getattr(s, "text", "") for s in stmts)
+
+
+def test_lifter_setcc_and_xchg():
+    lifter = X86Lifter(mode=64)
+    # sete al; setne cl; setl dl; xchg rax, rbx; ret
+    code = bytes.fromhex("0f 94 c0 0f 95 c1 0f 9c c2 48 87 d8 c3")
+    cfg = lifter.lift_bytes(code, base_address=0x1000)
+    stmts = cfg.blocks[cfg.entry_label].stmts
+    mnemonics = [s.text.split()[0] for s in stmts if hasattr(s, "text")]
+    assert "sete" in mnemonics
+    assert "setne" in mnemonics
+    assert "setl" in mnemonics
+    assert "xchg" in mnemonics
+    assert not any("UNHANDLED" in getattr(s, "text", "") for s in stmts)
+
+
+def test_lifter_complex_displacement():
+    lifter = X86Lifter(mode=64)
+    # mov rax, qword ptr [rbp - 0x18]; ret
+    code = bytes.fromhex("48 8b 45 e8 c3")
+    cfg = lifter.lift_bytes(code, base_address=0x1000)
+    stmts = cfg.blocks[cfg.entry_label].stmts
+    assert not any("UNHANDLED" in getattr(s, "text", "") for s in stmts)
+    assign_stmts = [s for s in stmts if isinstance(s, Assign)]
+    assert len(assign_stmts) >= 1
+

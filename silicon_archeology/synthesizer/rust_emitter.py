@@ -26,6 +26,11 @@ class RustEmitter:
         # 1. Check for algorithmic idioms by CFG structure and semantics
         for matcher in (
             IdiomMatcher.match_isolate_lowest_bit,
+            IdiomMatcher.match_reset_lowest_set_bit,
+            IdiomMatcher.match_and_not,
+            IdiomMatcher.match_byte_swap,
+            IdiomMatcher.match_count_trailing_zeros,
+            IdiomMatcher.match_count_leading_zeros,
             IdiomMatcher.match_popcount,
             IdiomMatcher.match_clamp,
             IdiomMatcher.match_branchless_min,

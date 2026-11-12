@@ -7,7 +7,8 @@ from silicon_archeology.ir.cfg import ControlFlowGraph
 from silicon_archeology.synthesizer.ast import (
     RustFunction, RustParam, RustStmt, RustReturn, RustLet,
     RustAssignStmt, RustExpr, RustIdent, RustLiteral, RustBinaryOp,
-    RustMethodCall, RustCall, RustWhile, RustIfStmt, RustCast
+    RustMethodCall, RustCall, RustWhile, RustIfStmt, RustCast,
+    RustUnaryOp, RustIfExpr
 )
 
 
@@ -112,9 +113,9 @@ class IdiomMatcher:
         all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
         if "clamp" in all_text or all_text.count("cmov") >= 2:
             return RustFunction(
-                name="clamp_i32",
-                params=[RustParam("val", "i32"), RustParam("min_val", "i32"), RustParam("max_val", "i32")],
-                return_type="i32",
+                name="clamp_val",
+                params=[RustParam("val", "i64"), RustParam("min_val", "i64"), RustParam("max_val", "i64")],
+                return_type="i64",
                 body=[
                     RustReturn(RustMethodCall(
                         RustIdent("val"),
@@ -124,6 +125,99 @@ class IdiomMatcher:
                 ],
                 doc_comment="Clamps value into range [min_val, max_val]."
             )
+        return None
+
+    @staticmethod
+    def match_byte_swap(cfg: ControlFlowGraph) -> Optional[RustFunction]:
+        """Matches integer byte reversal (bswap)."""
+        if len(cfg.blocks) == 1:
+            all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
+            if "bswap" in all_text:
+                return RustFunction(
+                    name="byte_swap",
+                    params=[RustParam("x", "u64")],
+                    return_type="u64",
+                    body=[
+                        RustReturn(RustMethodCall(RustIdent("x"), "swap_bytes"))
+                    ],
+                    doc_comment="Reverses the byte order of the integer using Rust std `swap_bytes()`."
+                )
+        return None
+
+    @staticmethod
+    def match_count_trailing_zeros(cfg: ControlFlowGraph) -> Optional[RustFunction]:
+        """Matches count trailing zeros (tzcnt / bsf / ctz)."""
+        if len(cfg.blocks) == 1:
+            all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
+            if "tzcnt" in all_text or "bsf" in all_text or "ctz" in all_text:
+                return RustFunction(
+                    name="count_trailing_zeros",
+                    params=[RustParam("x", "u64")],
+                    return_type="u64",
+                    body=[
+                        RustReturn(RustCast(RustMethodCall(RustIdent("x"), "trailing_zeros"), "u64"))
+                    ],
+                    doc_comment="Counts trailing zeros using Rust std `trailing_zeros()`."
+                )
+        return None
+
+    @staticmethod
+    def match_count_leading_zeros(cfg: ControlFlowGraph) -> Optional[RustFunction]:
+        """Matches count leading zeros (lzcnt / bsr / clz)."""
+        if len(cfg.blocks) == 1:
+            all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
+            if "lzcnt" in all_text or "bsr" in all_text or "clz" in all_text:
+                return RustFunction(
+                    name="count_leading_zeros",
+                    params=[RustParam("x", "u64")],
+                    return_type="u64",
+                    body=[
+                        RustReturn(RustCast(RustMethodCall(RustIdent("x"), "leading_zeros"), "u64"))
+                    ],
+                    doc_comment="Counts leading zeros using Rust std `leading_zeros()`."
+                )
+        return None
+
+    @staticmethod
+    def match_reset_lowest_set_bit(cfg: ControlFlowGraph) -> Optional[RustFunction]:
+        """Matches x & (x - 1) / BLSR instruction (reset lowest set bit)."""
+        if len(cfg.blocks) == 1:
+            all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
+            if "blsr" in all_text or ("dec" in all_text and "and" in all_text) or ("sub" in all_text and "1" in all_text and "and" in all_text):
+                return RustFunction(
+                    name="reset_lowest_set_bit",
+                    params=[RustParam("x", "u64")],
+                    return_type="u64",
+                    body=[
+                        RustReturn(RustBinaryOp(
+                            "&",
+                            RustIdent("x"),
+                            RustMethodCall(RustIdent("x"), "wrapping_sub", [RustLiteral(1)])
+                        ))
+                    ],
+                    doc_comment="Resets the lowest set bit using `x & x.wrapping_sub(1)` (BMI1 BLSR)."
+                )
+        return None
+
+    @staticmethod
+    def match_and_not(cfg: ControlFlowGraph) -> Optional[RustFunction]:
+        """Matches bitwise AND NOT ((!a) & b) / ANDN instruction."""
+        if len(cfg.blocks) == 1:
+            all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
+            if "andn" in all_text:
+                return RustFunction(
+                    name="and_not",
+                    params=[RustParam("a", "u64"), RustParam("b", "u64")],
+                    return_type="u64",
+                    body=[
+                        RustReturn(RustBinaryOp(
+                            "&",
+                            RustUnaryOp("!", RustIdent("a")),
+                            RustIdent("b")
+                        ))
+                    ],
+                    doc_comment="Computes bitwise `(!a) & b` using BMI1 ANDN."
+                )
         return None
 
     @staticmethod

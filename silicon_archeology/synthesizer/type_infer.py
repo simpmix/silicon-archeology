@@ -6,7 +6,7 @@ from typing import Dict, Set, List, Tuple, Any, Optional
 from silicon_archeology.ir.cfg import ControlFlowGraph
 from silicon_archeology.ir.instructions import (
     Assign, MemStore, Branch, Return, BinaryExpr, UnaryExpr,
-    Var, Constant, Op, Stmt, ExtractExpr, ConcatExpr, IteExpr, MemLoad
+    Var, Constant, Op, Stmt, ExtractExpr, ConcatExpr, IteExpr, MemLoad, Comment
 )
 
 
@@ -74,6 +74,16 @@ class TypeInference:
     def _collect_reads(self, stmt: Stmt) -> Set[str]:
         reads: Set[str] = set()
         if isinstance(stmt, Assign):
+            # Recognize self-clearing zeroing idioms (e.g. xor r, r or sub r, r)
+            expr = stmt.expr
+            if isinstance(expr, BinaryExpr) and expr.op in (Op.XOR, Op.SUB):
+                if str(expr.left) == str(expr.right):
+                    return reads
+            elif isinstance(expr, ConcatExpr) and len(expr.parts) == 2:
+                inner = expr.parts[1]
+                if isinstance(inner, BinaryExpr) and inner.op in (Op.XOR, Op.SUB):
+                    if str(inner.left) == str(inner.right):
+                        return reads
             self._expr_reads(stmt.expr, reads)
         elif isinstance(stmt, MemStore):
             self._expr_reads(stmt.addr, reads)

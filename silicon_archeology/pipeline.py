@@ -68,12 +68,21 @@ class ReSynthesisPipeline:
         is_equiv = False
         cert: Optional[FormalCertificate] = None
 
+        preconditions: List[z3.BoolRef] = []
+        is_signed = getattr(self, "_current_fn_is_signed", True)
+        if "clamp" in name or any("clamp" in str(s).lower() for s in rust_ast.body):
+            if "rsi" in tf.input_symbols and "rdx" in tf.input_symbols:
+                min_sym = tf.input_symbols["rsi"]
+                max_sym = tf.input_symbols["rdx"]
+                preconditions.append(min_sym <= max_sym if is_signed else z3.ULE(min_sym, max_sym))
+
         if "rax" in bin_outputs and "rax" in rust_outputs:
             is_equiv, cert = self.verifier.verify_transfer_functions(
                 routine_name=name,
                 bin_outputs={"rax": bin_outputs["rax"]},
                 rust_outputs={"rax": rust_outputs["rax"]},
-                input_symbols=tf.input_symbols
+                input_symbols=tf.input_symbols,
+                preconditions=preconditions if preconditions else None
             )
         else:
             # Fallback verification across available outputs
@@ -81,7 +90,8 @@ class ReSynthesisPipeline:
                 routine_name=name,
                 bin_outputs=bin_outputs,
                 rust_outputs=rust_outputs if rust_outputs else bin_outputs,
-                input_symbols=tf.input_symbols
+                input_symbols=tf.input_symbols,
+                preconditions=preconditions if preconditions else None
             )
 
         # 5. Compile and test with rustc
@@ -156,6 +166,14 @@ class ReSynthesisPipeline:
                 then_val = self._eval_rust_stmts(stmt.then_body, dict(env))
                 else_val = self._eval_rust_stmts(stmt.else_body, dict(env))
                 return z3.If(cond, then_val, else_val)
+            elif isinstance(stmt, RustWhile):
+                for _ in range(8):
+                    cond = self._eval_rust_cond(stmt.cond, env)
+                    body_env = dict(env)
+                    self._eval_rust_stmts(stmt.body, body_env)
+                    for k in list(env.keys()):
+                        if k in body_env:
+                            env[k] = z3.If(cond, body_env[k], env[k])
 
         return env.get("rax", z3.BitVecVal(0, 64))
 
@@ -165,18 +183,25 @@ class ReSynthesisPipeline:
         if isinstance(expr, RustBinaryOp):
             l = self._eval_rust_expr(expr.left, env)
             r = self._eval_rust_expr(expr.right, env)
+            if l.size() != r.size():
+                target_sz = max(l.size(), r.size())
+                if l.size() < target_sz:
+                    l = z3.ZeroExt(target_sz - l.size(), l)
+                if r.size() < target_sz:
+                    r = z3.ZeroExt(target_sz - r.size(), r)
+            is_signed = getattr(self, "_current_fn_is_signed", False)
             if expr.op == "==":
                 return l == r
             elif expr.op == "!=":
                 return l != r
             elif expr.op == "<":
-                return l < r
+                return l < r if is_signed else z3.ULT(l, r)
             elif expr.op == "<=":
-                return l <= r
+                return l <= r if is_signed else z3.ULE(l, r)
             elif expr.op == ">":
-                return l > r
+                return l > r if is_signed else z3.UGT(l, r)
             elif expr.op == ">=":
-                return l >= r
+                return l >= r if is_signed else z3.UGE(l, r)
         elif isinstance(expr, RustUnaryOp) and expr.op == "!":
             return z3.Not(self._eval_rust_cond(expr.operand, env))
         return z3.BoolVal(True)
@@ -201,6 +226,8 @@ class ReSynthesisPipeline:
                 return z3.Extract(31, 0, val)
             elif target in ("u64", "i64"):
                 if val.size() < 64:
+                    if target == "i64":
+                        return z3.SignExt(64 - val.size(), val)
                     return z3.ZeroExt(64 - val.size(), val)
                 return val
             return val
@@ -216,6 +243,7 @@ class ReSynthesisPipeline:
                     r = z3.ZeroExt(target_sz - r.size(), r)
 
             op = expr.op
+            is_signed = getattr(self, "_current_fn_is_signed", False)
             if op == "+":
                 return l + r
             elif op == "-":
@@ -223,9 +251,9 @@ class ReSynthesisPipeline:
             elif op == "*":
                 return l * r
             elif op == "/":
-                return z3.UDiv(l, r)
+                return l / r if is_signed else z3.UDiv(l, r)
             elif op == "%":
-                return z3.URem(l, r)
+                return z3.SRem(l, r) if is_signed else z3.URem(l, r)
             elif op == "&":
                 return l & r
             elif op == "|":
@@ -235,7 +263,7 @@ class ReSynthesisPipeline:
             elif op == "<<":
                 return l << r
             elif op == ">>":
-                return z3.LShR(l, r)
+                return l >> r if is_signed else z3.LShR(l, r)
             elif op in ("==", "!=", "<", "<=", ">", ">="):
                 cond = self._eval_rust_cond(expr, env)
                 return z3.If(cond, z3.BitVecVal(1, 64), z3.BitVecVal(0, 64))
@@ -254,6 +282,12 @@ class ReSynthesisPipeline:
             elif expr.method == "wrapping_sub":
                 arg = self._eval_rust_expr(expr.args[0], env)
                 return rec - arg
+            elif expr.method == "wrapping_add":
+                arg = self._eval_rust_expr(expr.args[0], env)
+                return rec + arg
+            elif expr.method == "wrapping_mul":
+                arg = self._eval_rust_expr(expr.args[0], env)
+                return rec * arg
             elif expr.method == "rotate_left":
                 shift = self._eval_rust_expr(expr.args[0], env)
                 w = rec.size()
@@ -269,12 +303,27 @@ class ReSynthesisPipeline:
                 shift_w = shift if shift.size() == w else (z3.ZeroExt(w - shift.size(), shift) if shift.size() < w else z3.Extract(w - 1, 0, shift))
                 return z3.LShR(rec, (shift_w % w)) | (rec << (w - (shift_w % w)))
             elif expr.method == "count_ones":
-                # Z3 bit count for 64-bit vector
-                bits = [z3.ZeroExt(63, z3.Extract(i, i, rec)) for i in range(rec.size())]
+                bits = [z3.ZeroExt(rec.size() - 1, z3.Extract(i, i, rec)) for i in range(rec.size())]
                 count = bits[0]
                 for b in bits[1:]:
                     count = count + b
+                if rec.size() < 64:
+                    count = z3.ZeroExt(64 - rec.size(), count)
                 return count
+            elif expr.method == "trailing_zeros":
+                w = rec.size()
+                res = z3.BitVecVal(w, w)
+                for i in range(w - 1, -1, -1):
+                    bit_i = z3.Extract(i, i, rec)
+                    res = z3.If(bit_i == 1, z3.BitVecVal(i, w), res)
+                return res
+            elif expr.method == "leading_zeros":
+                w = rec.size()
+                res = z3.BitVecVal(w, w)
+                for i in range(w):
+                    bit_i = z3.Extract(i, i, rec)
+                    res = z3.If(bit_i == 1, z3.BitVecVal(w - 1 - i, w), res)
+                return res
             elif expr.method == "swap_bytes":
                 w = rec.size()
                 num_bytes = w // 8
@@ -283,6 +332,18 @@ class ReSynthesisPipeline:
                 for b in byte_parts[1:]:
                     res = z3.Concat(res, b)
                 return res
+            elif expr.method == "clamp":
+                min_v = self._eval_rust_expr(expr.args[0], env)
+                max_v = self._eval_rust_expr(expr.args[1], env)
+                is_signed = getattr(self, "_current_fn_is_signed", True)
+                if min_v.size() != rec.size():
+                    min_v = z3.SignExt(rec.size() - min_v.size(), min_v) if is_signed else z3.ZeroExt(rec.size() - min_v.size(), min_v)
+                if max_v.size() != rec.size():
+                    max_v = z3.SignExt(rec.size() - max_v.size(), max_v) if is_signed else z3.ZeroExt(rec.size() - max_v.size(), max_v)
+                if is_signed:
+                    return z3.If(rec < min_v, min_v, z3.If(rec > max_v, max_v, rec))
+                else:
+                    return z3.If(z3.ULT(rec, min_v), min_v, z3.If(z3.UGT(rec, max_v), max_v, rec))
 
         elif isinstance(expr, RustIfExpr):
             cond = self._eval_rust_cond(expr.cond, env)
@@ -297,12 +358,12 @@ class ReSynthesisPipeline:
             return z3.If(cond, then_v, else_v)
 
         elif isinstance(expr, RustCall):
-            if expr.function == "std::cmp::min":
+            if expr.function in ("std::cmp::min", "min"):
                 a = self._eval_rust_expr(expr.args[0], env)
                 b = self._eval_rust_expr(expr.args[1], env)
                 is_signed = getattr(self, "_current_fn_is_signed", True)
                 return z3.If(a < b if is_signed else z3.ULT(a, b), a, b)
-            elif expr.function == "std::cmp::max":
+            elif expr.function in ("std::cmp::max", "max"):
                 a = self._eval_rust_expr(expr.args[0], env)
                 b = self._eval_rust_expr(expr.args[1], env)
                 is_signed = getattr(self, "_current_fn_is_signed", True)
@@ -401,9 +462,6 @@ class ReSynthesisPipeline:
                 else:
                     # Library compiled successfully; binary linking not available in environment
                     return True, "Compilation succeeded (rustc verified library types and AST)", True, "All tests verified via formal SMT certificate (linking skipped: missing system CRT)"
-
-            except Exception as e:
-                return False, str(e), False, str(e)
 
             except Exception as e:
                 return False, str(e), False, str(e)

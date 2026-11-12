@@ -106,10 +106,19 @@ Silicon Archeology includes pattern-matching engines that recognize idiomatic al
 | Binary Pattern | Lifted Micro-IR | Synthesized Rust |
 | :--- | :--- | :--- |
 | `neg rdi; and rax, rdi` | `(-x) & x` | `x & x.wrapping_neg()` |
+| `blsr rax, rdi` | `(x - 1) & x` | `x & x.wrapping_sub(1)` |
+| `andn rax, rdi, rsi` | `(!a) & b` | `(!a) & b` |
+| `bextr rax, rdi, rsi` | `(src >> start) & mask` | `(src >> start) & mask` |
+| `tzcnt rax, rdi` | `ctz(x)` | `x.trailing_zeros() as u64` |
+| `lzcnt rax, rdi` | `clz(x)` | `x.leading_zeros() as u64` |
+| `bswap rax` | `bswap(x)` | `x.swap_bytes()` |
 | `popcnt rax, rdi` | `popcnt(x)` | `x.count_ones() as u64` |
 | `cmp rdi, rsi; cmovg rdi, rsi` | `if a > b then b else a` (signed) | `std::cmp::min(a, b)` |
 | `cmp rdi, rsi; cmovl rdi, rsi` | `if a < b then b else a` (signed) | `std::cmp::max(a, b)` |
+| `cmp ... cmovl ... cmp ... cmovg` | `clamp(val, min, max)` | `val.clamp(min, max)` |
 | `rol rdi, k` | `rotate_left(x, k)` | `x.rotate_left(k)` |
+| `xor rdx, rdx; div rsi` | `rax u/ rsi, rax u% rsi` | `(a / b), (a % b)` |
+| `cmp rdi, rsi; sete al` | `if a == b then 1 else 0` | `if a == b { 1 } else { 0 }` |
 | `imul rax, c; shr rdx, 33; xor ...` | Avalanche multiplier round | `(rax * c) ^ (rax >> 33)` |
 
 ---

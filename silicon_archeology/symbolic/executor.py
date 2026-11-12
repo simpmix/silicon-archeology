@@ -46,6 +46,28 @@ class SymbolicExecutor:
                 for b in bits[1:]:
                     total = total + b
                 return total
+            elif expr.op == Op.CTZ:
+                w = val.size()
+                res = z3.BitVecVal(w, w)
+                for i in range(w - 1, -1, -1):
+                    bit_i = z3.Extract(i, i, val)
+                    res = z3.If(bit_i == 1, z3.BitVecVal(i, w), res)
+                return res
+            elif expr.op == Op.CLZ:
+                w = val.size()
+                res = z3.BitVecVal(w, w)
+                for i in range(w):
+                    bit_i = z3.Extract(i, i, val)
+                    res = z3.If(bit_i == 1, z3.BitVecVal(w - 1 - i, w), res)
+                return res
+            elif expr.op == Op.BSWAP:
+                w = val.size()
+                num_bytes = w // 8
+                byte_parts = [z3.Extract(i * 8 + 7, i * 8, val) for i in range(num_bytes)]
+                res = byte_parts[0]
+                for b in byte_parts[1:]:
+                    res = z3.Concat(res, b)
+                return res
             raise NotImplementedError(f"Unhandled unary op {expr.op}")
 
         elif isinstance(expr, BinaryExpr):
@@ -56,9 +78,15 @@ class SymbolicExecutor:
             if left.size() != right.size():
                 target_sz = max(left.size(), right.size())
                 if left.size() < target_sz:
-                    left = z3.ZeroExt(target_sz - left.size(), left)
+                    if expr.op in (Op.SAR, Op.LT, Op.LE, Op.GT, Op.GE, Op.DIV, Op.REM):
+                        left = z3.SignExt(target_sz - left.size(), left)
+                    else:
+                        left = z3.ZeroExt(target_sz - left.size(), left)
                 if right.size() < target_sz:
-                    right = z3.ZeroExt(target_sz - right.size(), right)
+                    if expr.op in (Op.LT, Op.LE, Op.GT, Op.GE, Op.DIV, Op.REM):
+                        right = z3.SignExt(target_sz - right.size(), right)
+                    else:
+                        right = z3.ZeroExt(target_sz - right.size(), right)
 
             w = left.size()
             op = expr.op

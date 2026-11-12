@@ -144,3 +144,103 @@ def test_pipeline_bswap():
     assert res.is_equivalent is True
     assert res.certificate.status == "PROVEN_EQUIVALENT"
     assert res.compiles_successfully is True
+
+
+def test_pipeline_bmi_blsr():
+    pipe = ReSynthesisPipeline(mode=64)
+    # blsr rax, rdi; ret
+    code = bytes.fromhex("c4 e2 f8 f3 cf c3")
+    res = pipe.process(name="blsr_routine", code_bytes=code)
+
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
+    assert "wrapping_sub" in res.rust_source or "blsr" in res.rust_source
+
+
+def test_pipeline_bmi_andn():
+    pipe = ReSynthesisPipeline(mode=64)
+    # andn rax, rdi, rsi; ret
+    code = bytes.fromhex("c4 e2 c0 f2 c6 c3")
+    res = pipe.process(name="andn_routine", code_bytes=code)
+
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
+    assert "!" in res.rust_source
+
+
+def test_pipeline_bmi_bextr():
+    pipe = ReSynthesisPipeline(mode=64)
+    # bextr rax, rdi, rsi; ret
+    code = bytes.fromhex("c4 e2 c8 f7 c7 c3")
+    res = pipe.process(name="bextr_routine", code_bytes=code)
+
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
+
+
+def test_pipeline_bit_counting_tzcnt_lzcnt():
+    pipe = ReSynthesisPipeline(mode=64)
+    # tzcnt rax, rdi; ret
+    code_tz = bytes.fromhex("f3 48 0f bc c7 c3")
+    res_tz = pipe.process(name="tz_routine", code_bytes=code_tz)
+    assert res_tz.is_equivalent is True
+    assert res_tz.compiles_successfully is True
+    assert "trailing_zeros" in res_tz.rust_source
+
+    # lzcnt rax, rdi; ret
+    code_lz = bytes.fromhex("f3 48 0f bd c7 c3")
+    res_lz = pipe.process(name="lz_routine", code_bytes=code_lz)
+    assert res_lz.is_equivalent is True
+    assert res_lz.compiles_successfully is True
+    assert "leading_zeros" in res_lz.rust_source
+
+
+def test_pipeline_division_and_modulo():
+    pipe = ReSynthesisPipeline(mode=64)
+    # mov rax, rdi; xor rdx, rdx; div rsi; ret
+    code_div = bytes.fromhex("48 89 f8 48 31 d2 48 f7 f6 c3")
+    res_div = pipe.process(name="div_routine", code_bytes=code_div)
+    assert res_div.is_equivalent is True
+    assert res_div.compiles_successfully is True
+
+
+def test_pipeline_setcc_predicate():
+    pipe = ReSynthesisPipeline(mode=64)
+    # cmp rdi, rsi; sete al; movzx rax, al; ret
+    code = bytes.fromhex("48 39 f7 0f 94 c0 48 0f b6 c0 c3")
+    res = pipe.process(name="is_equal_predicate", code_bytes=code)
+    assert res.is_equivalent is True
+    assert res.compiles_successfully is True
+
+
+def test_pipeline_branchless_clamp():
+    pipe = ReSynthesisPipeline(mode=64)
+    # cmp rdi, rsi; cmovl rdi, rsi; cmp rdi, rdx; cmovg rdi, rdx; mov rax, rdi; ret
+    code = bytes.fromhex("48 39 f7 48 0f 4c fe 48 39 d7 48 0f 4f fa 48 89 f8 c3")
+    res = pipe.process(name="clamp_val", code_bytes=code)
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
+    assert "clamp" in res.rust_source
+
+
+def test_pipeline_three_operand_imul():
+    pipe = ReSynthesisPipeline(mode=64)
+    # imul rax, rdi, 42; ret
+    code = bytes.fromhex("48 6b c7 2a c3")
+    res = pipe.process(name="imul_fixed", code_bytes=code)
+    assert res.is_equivalent is True
+    assert res.compiles_successfully is True
+    assert "42" in res.rust_source or "0x2A" in res.rust_source
+
+
+def test_pipeline_cqo_sign_extension():
+    pipe = ReSynthesisPipeline(mode=64)
+    # mov rax, rdi; cqo; mov rax, rdx; ret
+    code = bytes.fromhex("48 89 f8 48 99 48 89 d0 c3")
+    res = pipe.process(name="cqo_sign_extract", code_bytes=code)
+    assert res.is_equivalent is True
+    assert res.compiles_successfully is True

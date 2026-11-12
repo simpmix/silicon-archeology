@@ -18,6 +18,9 @@ class Op(Enum):
     UREM = "u%"
     NEG = "neg"
     POPCNT = "popcnt"
+    CTZ = "ctz"
+    CLZ = "clz"
+    BSWAP = "bswap"
 
     # Bitwise
     AND = "&"

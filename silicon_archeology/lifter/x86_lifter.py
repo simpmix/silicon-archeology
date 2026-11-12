@@ -70,7 +70,7 @@ class X86Lifter:
         cfg.detect_loops()
         return cfg
 
-    def _resolve_operand(self, op: DecodedOperand) -> Expr:
+    def _resolve_operand(self, op: DecodedOperand, next_ip: Optional[int] = None) -> Expr:
         if op.type_name == "imm":
             return Constant(op.value, op.size_bits)
         elif op.type_name == "reg":
@@ -80,15 +80,20 @@ class X86Lifter:
                 return parent_var
             return ExtractExpr(parent_var, offset + width - 1, offset)
         elif op.type_name == "mem":
-            addr_expr = self._resolve_mem_addr(op.value)
+            addr_expr = self._resolve_mem_addr(op.value, next_ip)
             return MemLoad(addr_expr, op.size_bits)
         raise ValueError(f"Unknown operand type: {op}")
 
-    def _resolve_mem_addr(self, mem: MemRef) -> Expr:
+    def _resolve_mem_addr(self, mem: MemRef, next_ip: Optional[int] = None) -> Expr:
+        if mem.base == "rip" and next_ip is not None:
+            return Constant(next_ip + mem.disp, 64)
         parts: List[Expr] = []
         if mem.base:
-            canon, _, _ = normalize_reg(mem.base)
-            parts.append(Var(canon, 64))
+            if mem.base == "rip" and next_ip is not None:
+                parts.append(Constant(next_ip, 64))
+            else:
+                canon, _, _ = normalize_reg(mem.base)
+                parts.append(Var(canon, 64))
         if mem.index:
             canon, _, _ = normalize_reg(mem.index)
             idx_var = Var(canon, 64)
@@ -97,20 +102,31 @@ class X86Lifter:
                 parts.append(idx_expr)
             else:
                 parts.append(idx_var)
-        if mem.disp != 0:
-            parts.append(Constant(mem.disp, 64))
 
         if not parts:
-            return Constant(0, 64)
+            return Constant(mem.disp, 64)
+
         expr = parts[0]
         for p in parts[1:]:
             expr = BinaryExpr(Op.ADD, expr, p, 64)
+
+        if mem.disp != 0:
+            if mem.disp > 0:
+                expr = BinaryExpr(Op.ADD, expr, Constant(mem.disp, 64), 64)
+            else:
+                expr = BinaryExpr(Op.SUB, expr, Constant(-mem.disp, 64), 64)
+
         return expr
 
-    def _assign_to_dest(self, dest_op: DecodedOperand, expr: Expr) -> List[Stmt]:
+    def _assign_to_dest(self, dest_op: DecodedOperand, expr: Expr, next_ip: Optional[int] = None) -> List[Stmt]:
         if dest_op.type_name == "reg":
             canon, offset, width = normalize_reg(dest_op.value)
             parent_var = Var(canon, 64)
+            if expr.bit_width > width:
+                expr = ExtractExpr(expr, width - 1, 0)
+            elif expr.bit_width < width:
+                expr = ConcatExpr([Constant(0, width - expr.bit_width), expr], width)
+
             if width == 64:
                 return [Assign(parent_var, expr)]
             elif width == 32:
@@ -133,7 +149,9 @@ class X86Lifter:
                     full = ConcatExpr([high_part, expr, low_part], 64)
                     return [Assign(parent_var, full)]
         elif dest_op.type_name == "mem":
-            addr = self._resolve_mem_addr(dest_op.value)
+            addr = self._resolve_mem_addr(dest_op.value, next_ip)
+            if expr.bit_width > dest_op.size_bits:
+                expr = ExtractExpr(expr, dest_op.size_bits - 1, 0)
             return [MemStore(addr, expr, dest_op.size_bits)]
         return []
 
@@ -285,13 +303,266 @@ class X86Lifter:
         elif m == "bswap":
             dst_val = self._resolve_operand(ops[0])
             w = ops[0].size_bits
-            num_bytes = w // 8
-            byte_parts = [
-                ExtractExpr(dst_val, i * 8 + 7, i * 8)
-                for i in range(num_bytes)
-            ]
-            swapped = ConcatExpr(byte_parts, w) if num_bytes > 1 else dst_val
-            stmts.extend(self._assign_to_dest(ops[0], swapped))
+            res = UnaryExpr(Op.BSWAP, dst_val, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+
+        # BMI1 / BMI2 and Bit Manipulation
+        elif m == "blsr":
+            src_val = self._resolve_operand(ops[1])
+            one = Constant(1, ops[0].size_bits)
+            sub_val = BinaryExpr(Op.SUB, src_val, one, ops[0].size_bits)
+            res = BinaryExpr(Op.AND, src_val, sub_val, ops[0].size_bits)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
+            stmts.append(Assign(Var("__sf", 1), flag_sign(res)))
+            stmts.append(Assign(Var("__cf", 1), BinaryExpr(Op.EQ, src_val, Constant(0, ops[0].size_bits), 1)))
+            stmts.append(Assign(Var("__of", 1), Constant(0, 1)))
+
+        elif m == "blsi":
+            src_val = self._resolve_operand(ops[1])
+            neg_val = UnaryExpr(Op.NEG, src_val, ops[0].size_bits)
+            res = BinaryExpr(Op.AND, src_val, neg_val, ops[0].size_bits)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
+            stmts.append(Assign(Var("__sf", 1), flag_sign(res)))
+            stmts.append(Assign(Var("__cf", 1), BinaryExpr(Op.NE, src_val, Constant(0, ops[0].size_bits), 1)))
+            stmts.append(Assign(Var("__of", 1), Constant(0, 1)))
+
+        elif m == "blsmsk":
+            src_val = self._resolve_operand(ops[1])
+            one = Constant(1, ops[0].size_bits)
+            sub_val = BinaryExpr(Op.SUB, src_val, one, ops[0].size_bits)
+            res = BinaryExpr(Op.XOR, src_val, sub_val, ops[0].size_bits)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), Constant(0, 1)))
+            stmts.append(Assign(Var("__sf", 1), flag_sign(res)))
+            stmts.append(Assign(Var("__cf", 1), BinaryExpr(Op.EQ, src_val, Constant(0, ops[0].size_bits), 1)))
+            stmts.append(Assign(Var("__of", 1), Constant(0, 1)))
+
+        elif m == "bzhi":
+            src_val = self._resolve_operand(ops[1])
+            idx_raw = self._resolve_operand(ops[2])
+            w = ops[0].size_bits
+            idx_byte = ExtractExpr(idx_raw, 7, 0)
+            idx_val = ConcatExpr([Constant(0, w - 8), idx_byte], w)
+            one = Constant(1, w)
+            shift = BinaryExpr(Op.SHL, one, idx_val, w)
+            mask = BinaryExpr(Op.SUB, shift, one, w)
+            masked = BinaryExpr(Op.AND, src_val, mask, w)
+            res = IteExpr(BinaryExpr(Op.UGE, idx_val, Constant(w, w), 1), src_val, masked, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
+            stmts.append(Assign(Var("__sf", 1), flag_sign(res)))
+            stmts.append(Assign(Var("__cf", 1), BinaryExpr(Op.UGE, idx_val, Constant(w, w), 1)))
+            stmts.append(Assign(Var("__of", 1), Constant(0, 1)))
+
+        elif m == "andn":
+            src1_val = self._resolve_operand(ops[1])
+            src2_val = self._resolve_operand(ops[2])
+            not_src1 = UnaryExpr(Op.NOT, src1_val, ops[0].size_bits)
+            res = BinaryExpr(Op.AND, not_src1, src2_val, ops[0].size_bits)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
+            stmts.append(Assign(Var("__sf", 1), flag_sign(res)))
+            stmts.append(Assign(Var("__cf", 1), Constant(0, 1)))
+            stmts.append(Assign(Var("__of", 1), Constant(0, 1)))
+
+        elif m == "bextr":
+            src_val = self._resolve_operand(ops[1])
+            ctrl_val = self._resolve_operand(ops[2])
+            w = ops[0].size_bits
+            start_byte = ExtractExpr(ctrl_val, 7, 0)
+            start_w = ConcatExpr([Constant(0, w - 8), start_byte], w)
+            len_byte = ExtractExpr(ctrl_val, 15, 8)
+            len_w = ConcatExpr([Constant(0, w - 8), len_byte], w)
+            shifted = BinaryExpr(Op.SHR, src_val, start_w, w)
+            one = Constant(1, w)
+            mask_val = BinaryExpr(Op.SUB, BinaryExpr(Op.SHL, one, len_w, w), one, w)
+            mask = IteExpr(
+                BinaryExpr(Op.UGE, len_w, Constant(w, w), 1),
+                Constant((1 << w) - 1, w),
+                mask_val,
+                w
+            )
+            res = IteExpr(
+                BinaryExpr(Op.EQ, len_w, Constant(0, w), 1),
+                Constant(0, w),
+                BinaryExpr(Op.AND, shifted, mask, w),
+                w
+            )
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
+            stmts.append(Assign(Var("__cf", 1), Constant(0, 1)))
+            stmts.append(Assign(Var("__of", 1), Constant(0, 1)))
+
+        elif m in ("tzcnt", "bsf"):
+            src_val = self._resolve_operand(ops[1])
+            w = ops[0].size_bits
+            res = UnaryExpr(Op.CTZ, src_val, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
+            stmts.append(Assign(Var("__cf", 1), BinaryExpr(Op.EQ, src_val, Constant(0, w), 1)))
+
+        elif m == "lzcnt":
+            src_val = self._resolve_operand(ops[1])
+            w = ops[0].size_bits
+            res = UnaryExpr(Op.CLZ, src_val, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
+            stmts.append(Assign(Var("__cf", 1), BinaryExpr(Op.EQ, src_val, Constant(0, w), 1)))
+
+        elif m == "bsr":
+            src_val = self._resolve_operand(ops[1])
+            w = ops[0].size_bits
+            clz_val = UnaryExpr(Op.CLZ, src_val, w)
+            res = BinaryExpr(Op.SUB, Constant(w - 1, w), clz_val, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), BinaryExpr(Op.EQ, src_val, Constant(0, w), 1)))
+
+        elif m in ("bt", "bts", "btr", "btc"):
+            dst_val = self._resolve_operand(ops[0])
+            bit_val = self._resolve_operand(ops[1])
+            w = ops[0].size_bits
+            one = Constant(1, w)
+            bit_mask = BinaryExpr(Op.SHL, one, bit_val, w)
+            test_bit = BinaryExpr(Op.AND, dst_val, bit_mask, w)
+            stmts.append(Assign(Var("__cf", 1), BinaryExpr(Op.NE, test_bit, Constant(0, w), 1)))
+            if m == "bts":
+                new_dst = BinaryExpr(Op.OR, dst_val, bit_mask, w)
+                stmts.extend(self._assign_to_dest(ops[0], new_dst))
+            elif m == "btr":
+                not_mask = UnaryExpr(Op.NOT, bit_mask, w)
+                new_dst = BinaryExpr(Op.AND, dst_val, not_mask, w)
+                stmts.extend(self._assign_to_dest(ops[0], new_dst))
+            elif m == "btc":
+                new_dst = BinaryExpr(Op.XOR, dst_val, bit_mask, w)
+                stmts.extend(self._assign_to_dest(ops[0], new_dst))
+
+        # Sign Extension & Division / Modulo
+        elif m == "cqo":
+            rax = Var("rax", 64)
+            sign_bit = ExtractExpr(rax, 63, 63)
+            sign_ext = IteExpr(
+                BinaryExpr(Op.EQ, sign_bit, Constant(1, 1), 1),
+                Constant(0xFFFFFFFFFFFFFFFF, 64),
+                Constant(0, 64),
+                64
+            )
+            stmts.append(Assign(Var("rdx", 64), sign_ext))
+
+        elif m == "cdq":
+            rax = Var("rax", 64)
+            sign_bit = ExtractExpr(rax, 31, 31)
+            sign_ext = IteExpr(
+                BinaryExpr(Op.EQ, sign_bit, Constant(1, 1), 1),
+                Constant(0x00000000FFFFFFFF, 64),
+                Constant(0, 64),
+                64
+            )
+            stmts.append(Assign(Var("rdx", 64), sign_ext))
+
+        elif m == "cdqe":
+            rax = Var("rax", 64)
+            eax = ExtractExpr(rax, 31, 0)
+            sign_bit = ExtractExpr(rax, 31, 31)
+            pad = IteExpr(
+                BinaryExpr(Op.EQ, sign_bit, Constant(1, 1), 1),
+                Constant(0xFFFFFFFF, 32),
+                Constant(0, 32),
+                32
+            )
+            stmts.append(Assign(rax, ConcatExpr([pad, eax], 64)))
+
+        elif m == "cbw":
+            rax = Var("rax", 64)
+            al = ExtractExpr(rax, 7, 0)
+            sign_bit = ExtractExpr(rax, 7, 7)
+            pad = IteExpr(
+                BinaryExpr(Op.EQ, sign_bit, Constant(1, 1), 1),
+                Constant(0xFF, 8),
+                Constant(0, 8),
+                8
+            )
+            ax = ConcatExpr([pad, al], 16)
+            stmts.append(Assign(rax, ConcatExpr([ExtractExpr(rax, 63, 16), ax], 64)))
+
+        elif m == "cwde":
+            rax = Var("rax", 64)
+            ax = ExtractExpr(rax, 15, 0)
+            sign_bit = ExtractExpr(rax, 15, 15)
+            pad = IteExpr(
+                BinaryExpr(Op.EQ, sign_bit, Constant(1, 1), 1),
+                Constant(0xFFFF, 16),
+                Constant(0, 16),
+                16
+            )
+            eax = ConcatExpr([pad, ax], 32)
+            stmts.append(Assign(rax, ConcatExpr([Constant(0, 32), eax], 64)))
+
+        elif m == "cwd":
+            rax = Var("rax", 64)
+            sign_bit = ExtractExpr(rax, 15, 15)
+            sign_ext = IteExpr(
+                BinaryExpr(Op.EQ, sign_bit, Constant(1, 1), 1),
+                Constant(0xFFFF, 16),
+                Constant(0, 16),
+                16
+            )
+            rdx = Var("rdx", 64)
+            stmts.append(Assign(rdx, ConcatExpr([ExtractExpr(rdx, 63, 16), sign_ext], 64)))
+
+        elif m == "div":
+            src = self._resolve_operand(ops[0])
+            w = ops[0].size_bits
+            rax = Var("rax", 64)
+            rdx = Var("rdx", 64)
+            if w == 64:
+                quotient = BinaryExpr(Op.UDIV, rax, src, 64)
+                remainder = BinaryExpr(Op.UREM, rax, src, 64)
+                stmts.append(Assign(rax, quotient))
+                stmts.append(Assign(rdx, remainder))
+            elif w == 32:
+                eax = ExtractExpr(rax, 31, 0)
+                quotient = BinaryExpr(Op.UDIV, eax, src, 32)
+                remainder = BinaryExpr(Op.UREM, eax, src, 32)
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), quotient))
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "edx", 32), remainder))
+
+        elif m == "idiv":
+            src = self._resolve_operand(ops[0])
+            w = ops[0].size_bits
+            rax = Var("rax", 64)
+            rdx = Var("rdx", 64)
+            if w == 64:
+                quotient = BinaryExpr(Op.DIV, rax, src, 64)
+                remainder = BinaryExpr(Op.REM, rax, src, 64)
+                stmts.append(Assign(rax, quotient))
+                stmts.append(Assign(rdx, remainder))
+            elif w == 32:
+                eax = ExtractExpr(rax, 31, 0)
+                quotient = BinaryExpr(Op.DIV, eax, src, 32)
+                remainder = BinaryExpr(Op.REM, eax, src, 32)
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), quotient))
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "edx", 32), remainder))
+
+        # Data Exchange
+        elif m == "xchg":
+            op0_val = self._resolve_operand(ops[0])
+            op1_val = self._resolve_operand(ops[1])
+            tmp_var = Var(f"_tmp_swap_{idx}", ops[0].size_bits)
+            stmts.append(Assign(tmp_var, op0_val))
+            stmts.extend(self._assign_to_dest(ops[0], op1_val))
+            stmts.extend(self._assign_to_dest(ops[1], tmp_var))
+
+        # Conditional Set (SETcc)
+        elif m.startswith("set") and len(m) in (4, 5):
+            cc = m[3:]
+            cond = self._build_branch_condition(cc, last_cmp_info)
+            w = ops[0].size_bits
+            one = Constant(1, w)
+            zero = Constant(0, w)
+            res = IteExpr(cond, one, zero, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
 
         elif m == "push":
             src = self._resolve_operand(ops[0])
@@ -398,6 +669,12 @@ class X86Lifter:
                     return BinaryExpr(Op.UGT, op0, op1, 1)
                 elif cc in ("ae", "nc", "nb"):
                     return BinaryExpr(Op.UGE, op0, op1, 1)
+                elif cc == "s":
+                    diff = BinaryExpr(Op.SUB, op0, op1, op0.bit_width)
+                    return BinaryExpr(Op.LT, diff, Constant(0, op0.bit_width), 1)
+                elif cc == "ns":
+                    diff = BinaryExpr(Op.SUB, op0, op1, op0.bit_width)
+                    return BinaryExpr(Op.GE, diff, Constant(0, op0.bit_width), 1)
 
             elif cmp_type == "test":
                 and_expr = BinaryExpr(Op.AND, op0, op1, op0.bit_width)
@@ -406,6 +683,12 @@ class X86Lifter:
                     return BinaryExpr(Op.EQ, and_expr, zero, 1)
                 elif cc in ("ne", "nz"):
                     return BinaryExpr(Op.NE, and_expr, zero, 1)
+                elif cc == "s":
+                    sign_bit = ExtractExpr(and_expr, op0.bit_width - 1, op0.bit_width - 1)
+                    return BinaryExpr(Op.EQ, sign_bit, Constant(1, 1), 1)
+                elif cc == "ns":
+                    sign_bit = ExtractExpr(and_expr, op0.bit_width - 1, op0.bit_width - 1)
+                    return BinaryExpr(Op.EQ, sign_bit, Constant(0, 1), 1)
 
         # Fallback to flag variables
         if cc in ("e", "z"):

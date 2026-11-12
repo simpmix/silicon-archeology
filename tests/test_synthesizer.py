@@ -134,3 +134,63 @@ def test_rust_emitter_loop_renaming():
     assert "rsi" not in code_text
     assert "b" in code_text
 
+
+def test_idiom_reset_lowest_set_bit():
+    cfg = ControlFlowGraph(entry_label="entry")
+    bb = cfg.get_or_create_block("entry")
+    bb.add_stmt(Comment("blsr rax, rdi"))
+    bb.add_stmt(Return(Var("rax", 64)))
+
+    fn = IdiomMatcher.match_reset_lowest_set_bit(cfg)
+    assert fn is not None
+    src = fn.emit()
+    assert "wrapping_sub" in src
+    assert "reset_lowest_set_bit" in src
+
+
+def test_idiom_and_not():
+    cfg = ControlFlowGraph(entry_label="entry")
+    bb = cfg.get_or_create_block("entry")
+    bb.add_stmt(Comment("andn rax, rdi, rsi"))
+    bb.add_stmt(Return(Var("rax", 64)))
+
+    fn = IdiomMatcher.match_and_not(cfg)
+    assert fn is not None
+    src = fn.emit()
+    assert "(!a)" in src
+    assert "and_not" in src
+
+
+def test_idiom_count_zeros():
+    cfg = ControlFlowGraph(entry_label="entry")
+    bb = cfg.get_or_create_block("entry")
+    bb.add_stmt(Comment("tzcnt rax, rdi"))
+    bb.add_stmt(Return(Var("rax", 64)))
+
+    fn = IdiomMatcher.match_count_trailing_zeros(cfg)
+    assert fn is not None
+    src = fn.emit()
+    assert "trailing_zeros" in src
+
+    cfg2 = ControlFlowGraph(entry_label="entry")
+    bb2 = cfg2.get_or_create_block("entry")
+    bb2.add_stmt(Comment("lzcnt rax, rdi"))
+    bb2.add_stmt(Return(Var("rax", 64)))
+
+    fn2 = IdiomMatcher.match_count_leading_zeros(cfg2)
+    assert fn2 is not None
+    src2 = fn2.emit()
+    assert "leading_zeros" in src2
+
+
+def test_idiom_byte_swap():
+    cfg = ControlFlowGraph(entry_label="entry")
+    bb = cfg.get_or_create_block("entry")
+    bb.add_stmt(Comment("bswap rax"))
+    bb.add_stmt(Return(Var("rax", 64)))
+
+    fn = IdiomMatcher.match_byte_swap(cfg)
+    assert fn is not None
+    src = fn.emit()
+    assert "swap_bytes" in src
+
