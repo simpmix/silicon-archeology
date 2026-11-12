@@ -1,0 +1,9 @@
+[package]
+name = "resynthesized_artifacts"
+version = "0.1.0"
+edition = "2021"
+authors = ["Silicon Archeology SMT Engine"]
+description = "Formally verified Rust library re-synthesized from x86_64 machine binaries via Z3 SMT solver."
+license = "MIT OR Apache-2.0"
+
+[dependencies]

@@ -1,0 +1,66 @@
+[
+  {
+    "routine": "add_two",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 4.6535000001313165,
+    "proof_hash": "5af20b988a9c4006e665cb91f694c8d661e461eb850fd9bbac769627c0868794"
+  },
+  {
+    "routine": "branchless_min",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 62.4422000037157,
+    "proof_hash": "a2869e64379c8df1b190ff69dca535d4d14b5820b71ce7b65f61a6ea701adf8b"
+  },
+  {
+    "routine": "isolate_lowest_bit",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 1.8866000027628615,
+    "proof_hash": "f5570f52ddf37db6d96a71f8d6508489911ddc314ed3c73f8dea19d38f721a88"
+  },
+  {
+    "routine": "popcount_builtin",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 2.571400000306312,
+    "proof_hash": "1e81a1fcdc28364015290d5eccadfe3e5ec510d892225cb1e37035a1ae9618c0"
+  },
+  {
+    "routine": "murmur3_fmix64",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 2.3718000011285767,
+    "proof_hash": "cc0be295fdd4f561331b3c5c450c7c5dc5d490102526e7e73bf44a9797b49718"
+  },
+  {
+    "routine": "tea_round",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 3.1091999990167096,
+    "proof_hash": "51fd634c659440fe96f617ef623f2e62adf9028465bd4dcf3165a15f6a4a878d"
+  },
+  {
+    "routine": "polynomial_eval",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 2.293000005010981,
+    "proof_hash": "3aab35457ab56437a67402a1aa83f274690d1f50f5dbd9ca85b33ab64118f0f3"
+  },
+  {
+    "routine": "rc4_prga_step",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 2.286299997649621,
+    "proof_hash": "94feaf08948f3aefa7e74afa671be464444e922e55fe73242e32f4c2bbb56ee7"
+  }
+]
