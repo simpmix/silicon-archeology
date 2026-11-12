@@ -31,6 +31,7 @@ class RustEmitter:
             IdiomMatcher.match_byte_swap,
             IdiomMatcher.match_count_trailing_zeros,
             IdiomMatcher.match_count_leading_zeros,
+            IdiomMatcher.match_branchless_abs,
             IdiomMatcher.match_popcount,
             IdiomMatcher.match_clamp,
             IdiomMatcher.match_branchless_min,
@@ -91,7 +92,7 @@ class RustEmitter:
         sorted_vars = sorted(list(assigned_vars), key=lambda x: (0 if x == "rax" else 1, x))
         let_decls: List[RustStmt] = []
         for v in sorted_vars:
-            v_type = ret_type if v == "rax" else type_map.get(v, "u64")
+            v_type = ret_type if v == "rax" else type_map.get(v, ret_type if ret_type.startswith("i") else "u64")
             let_decls.append(RustLet(name=v, type_annot=v_type, value=RustLiteral(0), is_mut=True))
 
         body = let_decls + body
@@ -116,6 +117,8 @@ class RustEmitter:
             if isinstance(s, RustAssignStmt):
                 if isinstance(s.dest, RustIdent) and s.dest.name in name_map:
                     s.dest.name = name_map[s.dest.name]
+                else:
+                    self._rename_expr(s.dest, name_map)
                 self._rename_expr(s.value, name_map)
             elif isinstance(s, RustReturn) and s.expr:
                 self._rename_expr(s.expr, name_map)

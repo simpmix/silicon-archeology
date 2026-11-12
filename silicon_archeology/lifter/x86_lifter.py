@@ -72,7 +72,8 @@ class X86Lifter:
 
     def _resolve_operand(self, op: DecodedOperand, next_ip: Optional[int] = None) -> Expr:
         if op.type_name == "imm":
-            return Constant(op.value, op.size_bits)
+            val = op.value & ((1 << op.size_bits) - 1) if op.value < 0 else op.value
+            return Constant(val, op.size_bits)
         elif op.type_name == "reg":
             canon, offset, width = normalize_reg(op.value)
             parent_var = Var(canon, 64)
@@ -260,9 +261,15 @@ class X86Lifter:
             if len(ops) == 1:
                 # 1-operand: RDX:RAX = RAX * op0
                 src = self._resolve_operand(ops[0])
-                rax = Var("rax", 64)
-                res = BinaryExpr(Op.MUL, rax, src, 64)
-                stmts.append(Assign(rax, res))
+                w = ops[0].size_bits
+                if w == 64:
+                    rax = Var("rax", 64)
+                    res = BinaryExpr(Op.MUL, rax, src, 64)
+                    stmts.append(Assign(rax, res))
+                elif w == 32:
+                    eax = ExtractExpr(Var("rax", 64), 31, 0)
+                    res = BinaryExpr(Op.MUL, eax, src, 32)
+                    stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), res))
             elif len(ops) == 2:
                 dst_val = self._resolve_operand(ops[0])
                 src_val = self._resolve_operand(ops[1])
@@ -276,9 +283,15 @@ class X86Lifter:
 
         elif m == "mul":
             src = self._resolve_operand(ops[0])
-            rax = Var("rax", 64)
-            res = BinaryExpr(Op.MUL, rax, src, 64)
-            stmts.append(Assign(rax, res))
+            w = ops[0].size_bits
+            if w == 64:
+                rax = Var("rax", 64)
+                res = BinaryExpr(Op.MUL, rax, src, 64)
+                stmts.append(Assign(rax, res))
+            elif w == 32:
+                eax = ExtractExpr(Var("rax", 64), 31, 0)
+                res = BinaryExpr(Op.MUL, eax, src, 32)
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), res))
 
         # Shifts
         elif m in ("shl", "sal", "shr", "sar"):
@@ -289,6 +302,35 @@ class X86Lifter:
                 "shr": Op.SHR, "sar": Op.SAR
             }
             res = BinaryExpr(op_map[m], dst_val, shift_val, ops[0].size_bits)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
+            stmts.append(Assign(Var("__sf", 1), flag_sign(res)))
+
+        elif m in ("shlx", "shrx", "sarx"):
+            # 3-operand BMI2 non-flag-affecting shifts: dest = src1 << src2
+            dst_op = ops[0]
+            src_val = self._resolve_operand(ops[1])
+            count_val = self._resolve_operand(ops[2])
+            w = dst_op.size_bits
+            op_map = {"shlx": Op.SHL, "shrx": Op.SHR, "sarx": Op.SAR}
+            res = BinaryExpr(op_map[m], src_val, count_val, w)
+            stmts.extend(self._assign_to_dest(dst_op, res))
+
+        elif m in ("shld", "shrd"):
+            dst_val = self._resolve_operand(ops[0])
+            src_val = self._resolve_operand(ops[1])
+            shift_op = self._resolve_operand(ops[2])
+            w = ops[0].size_bits
+            if m == "shld":
+                high_part = BinaryExpr(Op.SHL, dst_val, shift_op, w)
+                comp_shift = BinaryExpr(Op.SUB, Constant(w, w), shift_op, w)
+                low_part = BinaryExpr(Op.SHR, src_val, comp_shift, w)
+                res = BinaryExpr(Op.OR, high_part, low_part, w)
+            else:
+                low_part = BinaryExpr(Op.SHR, dst_val, shift_op, w)
+                comp_shift = BinaryExpr(Op.SUB, Constant(w, w), shift_op, w)
+                high_part = BinaryExpr(Op.SHL, src_val, comp_shift, w)
+                res = BinaryExpr(Op.OR, low_part, high_part, w)
             stmts.extend(self._assign_to_dest(ops[0], res))
             stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
             stmts.append(Assign(Var("__sf", 1), flag_sign(res)))
@@ -444,7 +486,7 @@ class X86Lifter:
             sign_bit = ExtractExpr(rax, 63, 63)
             sign_ext = IteExpr(
                 BinaryExpr(Op.EQ, sign_bit, Constant(1, 1), 1),
-                Constant(0xFFFFFFFFFFFFFFFF, 64),
+                Constant(-1, 64),
                 Constant(0, 64),
                 64
             )
@@ -516,34 +558,38 @@ class X86Lifter:
             w = ops[0].size_bits
             rax = Var("rax", 64)
             rdx = Var("rdx", 64)
+            tmp_q = Var(f"_div_q_{idx}", w)
+            tmp_r = Var(f"_div_r_{idx}", w)
             if w == 64:
-                quotient = BinaryExpr(Op.UDIV, rax, src, 64)
-                remainder = BinaryExpr(Op.UREM, rax, src, 64)
-                stmts.append(Assign(rax, quotient))
-                stmts.append(Assign(rdx, remainder))
+                stmts.append(Assign(tmp_q, BinaryExpr(Op.UDIV, rax, src, 64)))
+                stmts.append(Assign(tmp_r, BinaryExpr(Op.UREM, rax, src, 64)))
+                stmts.append(Assign(rax, tmp_q))
+                stmts.append(Assign(rdx, tmp_r))
             elif w == 32:
                 eax = ExtractExpr(rax, 31, 0)
-                quotient = BinaryExpr(Op.UDIV, eax, src, 32)
-                remainder = BinaryExpr(Op.UREM, eax, src, 32)
-                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), quotient))
-                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "edx", 32), remainder))
+                stmts.append(Assign(tmp_q, BinaryExpr(Op.UDIV, eax, src, 32)))
+                stmts.append(Assign(tmp_r, BinaryExpr(Op.UREM, eax, src, 32)))
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), tmp_q))
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "edx", 32), tmp_r))
 
         elif m == "idiv":
             src = self._resolve_operand(ops[0])
             w = ops[0].size_bits
             rax = Var("rax", 64)
             rdx = Var("rdx", 64)
+            tmp_q = Var(f"_idiv_q_{idx}", w)
+            tmp_r = Var(f"_idiv_r_{idx}", w)
             if w == 64:
-                quotient = BinaryExpr(Op.DIV, rax, src, 64)
-                remainder = BinaryExpr(Op.REM, rax, src, 64)
-                stmts.append(Assign(rax, quotient))
-                stmts.append(Assign(rdx, remainder))
+                stmts.append(Assign(tmp_q, BinaryExpr(Op.DIV, rax, src, 64)))
+                stmts.append(Assign(tmp_r, BinaryExpr(Op.REM, rax, src, 64)))
+                stmts.append(Assign(rax, tmp_q))
+                stmts.append(Assign(rdx, tmp_r))
             elif w == 32:
                 eax = ExtractExpr(rax, 31, 0)
-                quotient = BinaryExpr(Op.DIV, eax, src, 32)
-                remainder = BinaryExpr(Op.REM, eax, src, 32)
-                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), quotient))
-                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "edx", 32), remainder))
+                stmts.append(Assign(tmp_q, BinaryExpr(Op.DIV, eax, src, 32)))
+                stmts.append(Assign(tmp_r, BinaryExpr(Op.REM, eax, src, 32)))
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), tmp_q))
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "edx", 32), tmp_r))
 
         # Data Exchange
         elif m == "xchg":
@@ -553,6 +599,35 @@ class X86Lifter:
             stmts.append(Assign(tmp_var, op0_val))
             stmts.extend(self._assign_to_dest(ops[0], op1_val))
             stmts.extend(self._assign_to_dest(ops[1], tmp_var))
+
+        elif m == "xadd":
+            dst_val = self._resolve_operand(ops[0])
+            src_val = self._resolve_operand(ops[1])
+            w = ops[0].size_bits
+            tmp_var = Var(f"_tmp_xadd_{idx}", w)
+            sum_res = BinaryExpr(Op.ADD, dst_val, src_val, w)
+            stmts.append(Assign(tmp_var, sum_res))
+            stmts.extend(self._assign_to_dest(ops[1], dst_val))
+            stmts.extend(self._assign_to_dest(ops[0], tmp_var))
+            stmts.append(Assign(Var("__zf", 1), flag_zero(sum_res)))
+            stmts.append(Assign(Var("__sf", 1), flag_sign(sum_res)))
+            stmts.append(Assign(Var("__cf", 1), flag_carry_add(dst_val, src_val, sum_res)))
+            stmts.append(Assign(Var("__of", 1), flag_overflow_add(dst_val, src_val, sum_res)))
+
+        elif m == "cmpxchg":
+            dst_val = self._resolve_operand(ops[0])
+            src_val = self._resolve_operand(ops[1])
+            w = ops[0].size_bits
+            accum = Var("rax", 64) if w == 64 else ExtractExpr(Var("rax", 64), w - 1, 0)
+            is_eq = BinaryExpr(Op.EQ, accum, dst_val, 1)
+            new_dst = IteExpr(is_eq, src_val, dst_val, w)
+            new_accum = IteExpr(is_eq, accum, dst_val, w)
+            stmts.extend(self._assign_to_dest(ops[0], new_dst))
+            if w == 64:
+                stmts.append(Assign(Var("rax", 64), new_accum))
+            else:
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax" if w == 32 else ("ax" if w == 16 else "al"), w), new_accum))
+            stmts.append(Assign(Var("__zf", 1), is_eq))
 
         # Conditional Set (SETcc)
         elif m.startswith("set") and len(m) in (4, 5):

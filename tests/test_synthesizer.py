@@ -194,3 +194,50 @@ def test_idiom_byte_swap():
     src = fn.emit()
     assert "swap_bytes" in src
 
+
+def test_idiom_branchless_abs():
+    cfg = ControlFlowGraph(entry_label="entry")
+    bb = cfg.get_or_create_block("entry")
+    bb.add_stmt(Comment("cqo"))
+    bb.add_stmt(Comment("xor rax, rdx"))
+    bb.add_stmt(Comment("sub rax, rdx"))
+    bb.add_stmt(Return(Var("rax", 64)))
+
+    fn = IdiomMatcher.match_branchless_abs(cfg)
+    assert fn is not None
+    src = fn.emit()
+    assert "wrapping_abs" in src
+    assert "branchless_abs" in src
+
+
+def test_type_inference_propagation():
+    cfg = ControlFlowGraph(entry_label="entry")
+    bb = cfg.get_or_create_block("entry")
+    # rdi copied to rax, then rax is divided via signed idiv
+    rdi = Var("rdi", 64)
+    rsi = Var("rsi", 64)
+    rax = Var("rax", 64)
+    bb.add_stmt(Assign(rax, rdi))
+    bb.add_stmt(Assign(rax, BinaryExpr(Op.DIV, rax, rsi, 64)))
+    bb.add_stmt(Return(rax))
+
+    ti = TypeInference(cfg)
+    params, type_map, ret_type = ti.analyze()
+    assert type_map["rdi"] == "i64"
+    assert type_map["rsi"] == "i64"
+    assert ret_type == "i64"
+
+
+def test_relooper_zeroing_idiom():
+    cfg = ControlFlowGraph(entry_label="entry")
+    bb = cfg.get_or_create_block("entry")
+    rdx = Var("rdx", 64)
+    # xor rdx, rdx
+    bb.add_stmt(Assign(rdx, BinaryExpr(Op.XOR, rdx, rdx, 64)))
+    bb.add_stmt(Return(rdx))
+
+    emitter = RustEmitter(cfg, name="zero_rdx")
+    fn = emitter.synthesize()
+    src = fn.emit()
+    assert "= 0;" in src
+

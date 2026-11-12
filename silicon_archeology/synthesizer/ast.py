@@ -36,6 +36,11 @@ class RustLiteral(RustExpr):
             return "true" if self.value else "false"
         if isinstance(self.value, int):
             if self.value < 0:
+                if suffix.startswith("u"):
+                    val = self.value & 0xFFFFFFFFFFFFFFFF
+                    return f"0x{val:X}{suffix}"
+                if abs(self.value) < 0x8000:
+                    return f"{self.value}{suffix}"
                 val = self.value & 0xFFFFFFFFFFFFFFFF
                 return f"0x{val:X}{suffix}"
             elif self.value > 0xFFFF:

@@ -158,3 +158,37 @@ def test_symbolic_bmi_blsr():
     s.add(in_rdi == 12)
     s.add(tf.combined_outputs["rax"] != 8)
     assert s.check() == z3.unsat
+
+
+def test_symbolic_signed_remainder():
+    # Verify Op.REM uses truncated signed remainder (z3.SRem)
+    cfg = ControlFlowGraph(entry_label="entry")
+    bb = cfg.get_or_create_block("entry")
+    # rax = (-10) % 3 -> should be -1
+    rem = BinaryExpr(Op.REM, Constant(-10, 64), Constant(3, 64), 64)
+    bb.add_stmt(Assign(Var("rax", 64), rem))
+    bb.add_stmt(Return(Var("rax", 64)))
+
+    executor = SymbolicExecutor(cfg)
+    tf = executor.compute_transfer_function("rem_fn")
+    s = z3.Solver()
+    s.add(tf.combined_outputs["rax"] != z3.BitVecVal(-1, 64))
+    assert s.check() == z3.unsat
+
+
+def test_symbolic_bmi2_shlx_shrx():
+    from silicon_archeology.lifter.x86_lifter import X86Lifter
+    # shlx rax, rdi, rsi; ret
+    code = bytes.fromhex("c4 e2 c9 f7 c7 c3")
+    lifter = X86Lifter(mode=64)
+    cfg = lifter.lift_bytes(code)
+    executor = SymbolicExecutor(cfg)
+    tf = executor.compute_transfer_function("shlx_fn")
+
+    s = z3.Solver()
+    in_rdi = tf.input_symbols["rdi"]
+    in_rsi = tf.input_symbols["rsi"]
+    s.add(in_rdi == 7)
+    s.add(in_rsi == 2)
+    s.add(tf.combined_outputs["rax"] != 28)
+    assert s.check() == z3.unsat

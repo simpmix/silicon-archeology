@@ -217,7 +217,7 @@ Every synthesis emits a cryptographic verification certificate:
 
 ## 🧪 Test Suite
 
-Silicon Archeology has a comprehensive test suite of 54 automated tests covering the x86 lifter, BMI1/BMI2 instructions, symbolic execution, SMT verifier, relooper, and end-to-end integration:
+Silicon Archeology has a comprehensive test suite of 67 automated tests covering the x86 lifter, BMI1/BMI2 instructions, double-precision shifts (SHLD/SHRD), atomic exchanges (XADD, CMPXCHG), symbolic execution, SMT verifier, relooper, and end-to-end integration:
 
 ```bash
 pytest tests/ -v
@@ -238,6 +238,8 @@ tests/test_lifter.py::test_lifter_bit_tests PASSED
 tests/test_lifter.py::test_lifter_sign_extensions_and_division PASSED
 tests/test_lifter.py::test_lifter_setcc_and_xchg PASSED
 tests/test_lifter.py::test_lifter_complex_displacement PASSED
+tests/test_lifter.py::test_lifter_bmi2_shifts_and_double_shifts PASSED
+tests/test_lifter.py::test_lifter_xadd_and_cmpxchg PASSED
 tests/test_pipeline.py::test_pipeline_add_two_routine PASSED
 tests/test_pipeline.py::test_pipeline_bitwise_xor_swap PASSED
 tests/test_pipeline.py::test_pipeline_polynomial_calc PASSED
@@ -257,12 +259,20 @@ tests/test_pipeline.py::test_pipeline_setcc_predicate PASSED
 tests/test_pipeline.py::test_pipeline_branchless_clamp PASSED
 tests/test_pipeline.py::test_pipeline_three_operand_imul PASSED
 tests/test_pipeline.py::test_pipeline_cqo_sign_extension PASSED
+tests/test_pipeline.py::test_pipeline_signed_idiv PASSED
+tests/test_pipeline.py::test_pipeline_unsigned_modulo_correctness PASSED
+tests/test_pipeline.py::test_pipeline_branchless_abs PASSED
+tests/test_pipeline.py::test_pipeline_bmi2_shlx PASSED
+tests/test_pipeline.py::test_pipeline_atomic_xadd PASSED
+tests/test_pipeline.py::test_pipeline_double_shifts_shld_shrd PASSED
 tests/test_symbolic.py::test_symbolic_state_read_write PASSED
 tests/test_symbolic.py::test_symbolic_memory_little_endian PASSED
 tests/test_symbolic.py::test_symbolic_executor_arithmetic PASSED
 tests/test_symbolic.py::test_symbolic_executor_multi_path PASSED
 tests/test_symbolic.py::test_symbolic_ctz_clz_bswap PASSED
 tests/test_symbolic.py::test_symbolic_bmi_blsr PASSED
+tests/test_symbolic.py::test_symbolic_signed_remainder PASSED
+tests/test_symbolic.py::test_symbolic_bmi2_shlx_shrx PASSED
 tests/test_synthesizer.py::test_type_inference_signed_and_parameters PASSED
 tests/test_synthesizer.py::test_relooper_linear_sequence PASSED
 tests/test_synthesizer.py::test_idiom_isolate_lowest_set_bit PASSED
@@ -274,11 +284,14 @@ tests/test_synthesizer.py::test_idiom_reset_lowest_set_bit PASSED
 tests/test_synthesizer.py::test_idiom_and_not PASSED
 tests/test_synthesizer.py::test_idiom_count_zeros PASSED
 tests/test_synthesizer.py::test_idiom_byte_swap PASSED
+tests/test_synthesizer.py::test_idiom_branchless_abs PASSED
+tests/test_synthesizer.py::test_type_inference_propagation PASSED
+tests/test_synthesizer.py::test_relooper_zeroing_idiom PASSED
 tests/test_verifier.py::test_equivalence_identical_functions PASSED
 tests/test_verifier.py::test_equivalence_bitwise_identity PASSED
 tests/test_verifier.py::test_non_equivalence_counterexample PASSED
 tests/test_verifier.py::test_certificate_json_serialization PASSED
-============================= 54 passed in 21.81s =============================
+============================= 67 passed in 31.81s =============================
 ```
 
 ---

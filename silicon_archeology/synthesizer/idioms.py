@@ -221,11 +221,31 @@ class IdiomMatcher:
         return None
 
     @staticmethod
+    def match_branchless_abs(cfg: ControlFlowGraph) -> Optional[RustFunction]:
+        """Matches branchless absolute value: cqo/cdq followed by xor and sub."""
+        if len(cfg.blocks) == 1:
+            all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
+            if ("cqo" in all_text or "cdq" in all_text) and "xor" in all_text and "sub" in all_text:
+                return RustFunction(
+                    name="branchless_abs",
+                    params=[RustParam("x", "i64")],
+                    return_type="i64",
+                    body=[
+                        RustReturn(RustMethodCall(
+                            RustIdent("x"),
+                            "wrapping_abs"
+                        ))
+                    ],
+                    doc_comment="Computes branchless absolute value via sign-extension mask:\n`x.wrapping_abs()`."
+                )
+        return None
+
+    @staticmethod
     def match_gcd(cfg: ControlFlowGraph) -> Optional[RustFunction]:
         """Matches Euclidean greatest common divisor."""
         if len(cfg.loops) == 1:
             all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
-            if "%" in all_text or "div" in all_text or "rem" in all_text:
+            if ("%" in all_text or "div" in all_text or "rem" in all_text) and ("test" in all_text or "cmp" in all_text or "jnz" in all_text or "jne" in all_text):
                 return RustFunction(
                     name="gcd",
                     params=[RustParam("mut a", "u64"), RustParam("mut b", "u64")],

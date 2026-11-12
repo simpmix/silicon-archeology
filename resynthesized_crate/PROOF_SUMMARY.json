@@ -4,119 +4,175 @@
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 6.642299995291978,
-    "proof_hash": "3ca417e0457ac55a800cb5f317ecae5e66c4ffe56b15386a5e778cf3bd7b4df7"
+    "time_ms": 9.68000000284519,
+    "proof_hash": "7208c4cf10dac1961cd049edf4884b726d089d0dd0cdfca76bbcbc81443d4b2a"
   },
   {
     "routine": "branchless_min",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 113.529499998549,
-    "proof_hash": "75af5b668b2df47001dffe9aa7c97234d826ccf972d676d0d84194a8b5db7ae7"
+    "time_ms": 95.20789999805856,
+    "proof_hash": "9299c2e389345121e5449c81f14a78e00818750d6e97e46d30cf8ddf1cef70ba"
   },
   {
     "routine": "isolate_lowest_bit",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 3.8197999965632334,
-    "proof_hash": "438a748b8ce7a61e6bf3dbb9f87e4be573704892518d12a8cf4628f959af4ebe"
+    "time_ms": 4.12769999820739,
+    "proof_hash": "6311bcf718961ed302fe1b18b9da13385068e904290878a6e94a180328d7f7bd"
   },
   {
     "routine": "popcount_builtin",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 4.449799998837989,
-    "proof_hash": "ea4335e986a37b23f0b17a2a2e0c104ac9e6ada54e5495674df68ec5eba5378f"
+    "time_ms": 4.221999995934311,
+    "proof_hash": "de76245c5e437eadc602e49cdefffbc97d97b7491b441dc632bb967e78b98e68"
   },
   {
     "routine": "murmur3_fmix64",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 4.006899995147251,
-    "proof_hash": "46f16d7fc3567a75c43851948c8dfbe8c9e4974d8adb61ca5319f126ae4e290b"
+    "time_ms": 3.1872999970801175,
+    "proof_hash": "43df13be0972f8b4acbc8f8e9f79b57865a1602a64efa8c58cc037fd3f560b5c"
   },
   {
     "routine": "tea_round",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 6.940999999642372,
-    "proof_hash": "0d00b7ebbc91395b83916d3ace518cb1ffeef99f30b99f8ad467c1632a2b4fd2"
+    "time_ms": 5.133099999511614,
+    "proof_hash": "bb93a582e80b9b0edd5ba10723ec9db88d8d4f77b4fd330eb7badec656dd11d4"
   },
   {
     "routine": "polynomial_eval",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 3.678499997477047,
-    "proof_hash": "a38f7d21d2af38cc89d470b4f7d9add706dd8d504381e3fe9179b4023ab8b51e"
+    "time_ms": 2.2603999968850985,
+    "proof_hash": "32947cf30936d68901dc14a8688fabb54718d1c9e7e33851fe485099b4739880"
   },
   {
     "routine": "rc4_prga_step",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 6.117299999459647,
-    "proof_hash": "d948d10f3b72e4d220720863afdeee531e6b9d93bd80b7cd0dec9dcfc4f7c0e6"
+    "time_ms": 3.8072999959695153,
+    "proof_hash": "74309f3e0e85940c15edd5e970dc624725a901b3ed52d4bb700607b52741a27f"
   },
   {
     "routine": "reset_lowest_bit",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 3.5205000021960586,
-    "proof_hash": "9652adfb59ec83f4e8e25647c9c8c159e4af4346d68be75ef05e1a4fe987e031"
+    "time_ms": 3.0361000026459806,
+    "proof_hash": "4c2cdfcdb9ff5d6413b77ac393f8f014736de999a10c534e67c7e14d42cd4e50"
   },
   {
     "routine": "and_not",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 2.3897999999462627,
-    "proof_hash": "a52111e9974bdb3406527dad891f1917962bd04d57bdab6fd800435766e941bc"
+    "time_ms": 2.865499998733867,
+    "proof_hash": "0b321f9482003a7e6b24381b03b0b8413e09fffd28fb63565aa7ba856272d8af"
   },
   {
     "routine": "count_trailing_zeros",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 6.997500000579748,
-    "proof_hash": "211b48daa95694eff58015aec66dec849b60be0933a37c133a1c1419aae317e7"
+    "time_ms": 2.3758999959682114,
+    "proof_hash": "143f0522630af51e04f77e8cd6c470c596051a34955ec2a20aa55c3429d4d39b"
   },
   {
     "routine": "count_leading_zeros",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 6.665299995802343,
-    "proof_hash": "d7a4c59a5b8fa20e2a01be79d5a3f2e39edf2e73e2dab975298e0b5cc0a343c5"
+    "time_ms": 3.0121999952825718,
+    "proof_hash": "f34559dcd89516fbe60adecb9499f7fac02f97175c757685f3c2d0c77b2f2b9b"
   },
   {
     "routine": "byte_swap_64",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 3.078800000366755,
-    "proof_hash": "678864f30bcf4647b1ab9c2b06d4089ae73a7d558a4dc9da2d38d412c567ea7f"
+    "time_ms": 2.1609000032185577,
+    "proof_hash": "a063a63cf8f977aca6339f634a1e7fab7ab72ef8698ddd285a58b1b82558c26f"
   },
   {
     "routine": "clamp_val",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 103.07879999891156,
-    "proof_hash": "8b1c9d7652c27ebba710d64c6b5767ad4b64c15cb1f5405e4a84039849dd7e76"
+    "time_ms": 136.80890000250656,
+    "proof_hash": "15448e7590b2ca7d0267bd60163205f5de3f06358c8225bef0ad64697d9495cc"
   },
   {
     "routine": "unsigned_divide",
     "status": "PROVEN_EQUIVALENT",
     "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
     "solver": "Z3 Theorem Prover v5.4.1",
-    "time_ms": 3.68249999883119,
-    "proof_hash": "5a1c7aa10f991865e7ce40c4601685db47b5fee600888f2d2f881bd357777b6b"
+    "time_ms": 4.191799998807255,
+    "proof_hash": "56ebaa82c2add46ceb65a44fca8ece69e9dc36a3609de678cc9352bfe0415314"
+  },
+  {
+    "routine": "signed_divide",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 2.8333000009297393,
+    "proof_hash": "7f9424ccb71f96ae67f2670024b67bb8ba3d8bc5b0cb5dc78c6d87143d8397d7"
+  },
+  {
+    "routine": "unsigned_modulo",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 3.6258999971323647,
+    "proof_hash": "46227a1054d565f611571ea59550ea362c4d6b4ae991545d867b1bbc975ae591"
+  },
+  {
+    "routine": "branchless_abs",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 215.93289999873377,
+    "proof_hash": "92d95ad2e6d7deb91ec9e86aeead9ea7e5abcf340cdaf4e21ff8250445471d77"
+  },
+  {
+    "routine": "bmi2_shlx",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 3.9822999970056117,
+    "proof_hash": "13e894cf6644399ec33429eb29123641b83a7ece3bd1bfb3c0549579f064bb88"
+  },
+  {
+    "routine": "atomic_xadd",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 3.024100005859509,
+    "proof_hash": "03716f5fd1f32a43c6301f726e90cf2ea79d8727c60289483996acd8df2b5172"
+  },
+  {
+    "routine": "shld_step",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 2.8216999999131076,
+    "proof_hash": "dbbdb094786cca63a143e9040a8ce14eac62403effc2c77b4a9304f760a754e9"
+  },
+  {
+    "routine": "shrd_step",
+    "status": "PROVEN_EQUIVALENT",
+    "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+    "solver": "Z3 Theorem Prover v5.4.1",
+    "time_ms": 3.376399996341206,
+    "proof_hash": "3c735b9ff028fadbd5e29bbd39552905d19b2c68caa918a77cf826f812816a6a"
   }
 ]

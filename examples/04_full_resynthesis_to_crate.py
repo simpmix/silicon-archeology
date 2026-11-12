@@ -90,6 +90,41 @@ ROUTINES = [
         "name": "unsigned_divide",
         "bytes": bytes.fromhex("48 89 f8 48 31 d2 48 f7 f6 c3"),
         "doc": "Unsigned 64-bit integer division via DIV instruction."
+    },
+    {
+        "name": "signed_divide",
+        "bytes": bytes.fromhex("48 89 f8 48 99 48 f7 fe c3"),
+        "doc": "Signed 64-bit integer division via IDIV and CQO instructions."
+    },
+    {
+        "name": "unsigned_modulo",
+        "bytes": bytes.fromhex("48 89 f8 48 31 d2 48 f7 f6 48 89 d0 c3"),
+        "doc": "Unsigned 64-bit integer modulo remainder via DIV instruction."
+    },
+    {
+        "name": "branchless_abs",
+        "bytes": bytes.fromhex("48 89 f8 48 99 48 31 d0 48 29 d0 c3"),
+        "doc": "Branchless absolute value via sign-extension arithmetic."
+    },
+    {
+        "name": "bmi2_shlx",
+        "bytes": bytes.fromhex("c4 e2 c9 f7 c7 c3"),
+        "doc": "BMI2 dynamic logical shift left without affecting EFLAGS."
+    },
+    {
+        "name": "atomic_xadd",
+        "bytes": bytes.fromhex("48 0f c1 f7 48 89 f8 c3"),
+        "doc": "Atomic exchange and add via XADD instruction."
+    },
+    {
+        "name": "shld_step",
+        "bytes": bytes.fromhex("48 89 f8 48 0f a4 f0 04 c3"),
+        "doc": "Double-precision left shift step via SHLD instruction."
+    },
+    {
+        "name": "shrd_step",
+        "bytes": bytes.fromhex("48 89 f8 48 0f ac f0 04 c3"),
+        "doc": "Double-precision right shift step via SHRD instruction."
     }
 ]
 
@@ -253,6 +288,47 @@ mod tests {
     #[test]
     fn test_unsigned_divide() {
         assert_eq!(unsigned_divide(100, 7), 14);
+    }
+
+    #[test]
+    fn test_signed_divide() {
+        assert_eq!(signed_divide(-42, 6), -7);
+        assert_eq!(signed_divide(100, -5), -20);
+    }
+
+    #[test]
+    fn test_unsigned_modulo() {
+        assert_eq!(unsigned_modulo(14, 4), 2);
+        assert_eq!(unsigned_modulo(100, 7), 2);
+    }
+
+    #[test]
+    fn test_branchless_abs() {
+        assert_eq!(branchless_abs(-42), 42);
+        assert_eq!(branchless_abs(100), 100);
+        assert_eq!(branchless_abs(0), 0);
+    }
+
+    #[test]
+    fn test_bmi2_shlx() {
+        assert_eq!(bmi2_shlx(5, 3), 40);
+    }
+
+    #[test]
+    fn test_atomic_xadd() {
+        assert_eq!(atomic_xadd(15, 27), 42);
+    }
+
+    #[test]
+    fn test_shld_step() {
+        // (0x12 << 4) | (0xF000000000000000 >> 60)
+        assert_eq!(shld_step(0x12, 0xF000000000000000), 0x12F);
+    }
+
+    #[test]
+    fn test_shrd_step() {
+        // (0x120 >> 4) | (0x0F << 60)
+        assert_eq!(shrd_step(0x120, 0x0F), 0xF000000000000012);
     }
 }
 """

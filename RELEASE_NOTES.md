@@ -1,58 +1,49 @@
-# 🚀 Release Notes: Silicon Archeology v0.2.0
+# 🚀 Release Notes: Silicon Archeology v0.2.1
 
-We are proud to announce the release of **Silicon Archeology v0.2.0** — an aggressively hardened, polished, and expanded SMT-driven binary-to-compilable-Rust re-synthesis engine.
+We are proud to announce the release of **Silicon Archeology v0.2.1** — an aggressively hardened, polished, and expanded SMT-driven binary-to-compilable-Rust re-synthesis engine.
 
 ---
 
-## 🌟 Highlights & New Features in v0.2.0
+## 🌟 Highlights & New Features in v0.2.1
 
-### 1. Expanded x86/x86_64 Instruction Coverage & Hardware Semantics
-- **BMI1 & BMI2 Instructions**: Full lifting, symbolic transfer, and synthesis for:
+### 1. Critical Bug Fixes & Lifter Soundness
+- **Division Modulo Correctness**: Fixed a fatal bug in the x86 lifter where sequential assignments `Assign(rax, quotient)` and `Assign(rdx, remainder)` caused `rdx` to compute `quotient % divisor` instead of `dividend % divisor`. Introduced SSA temporaries (`_div_q`, `_div_r`, `_idiv_q`, `_idiv_r`) to guarantee mathematically sound, independent evaluation of quotient and remainder.
+- **Signed Modulo SMT Precision**: Fixed `Op.REM` in `SymbolicExecutor` which previously mapped to Z3's Euclidean modulo `bvsmod` (`left % right`); corrected to true truncated signed remainder `z3.SRem(left, right)` matching C/Rust/x86 `idiv` hardware semantics.
+- **Signedness Propagation**: Enhanced `TypeInference` with a multi-pass fixed-point propagation algorithm ensuring signed types (`i64`/`i32`) flow backwards across register copy assignments (e.g. `mov rax, rdi` followed by `idiv rsi` correctly marks `rdi` as `i64`).
+- **Negative Integer Literal Compilation**: Fixed `RustLiteral` and `Constant` emitting overflowing positive hex literals for signed types; signed literals now emit valid Rust expressions (e.g. `-1` and `-42i64`) without triggering `deny(overflowing_literals)` errors.
+- **Test Harness Literal Formatting**: Fixed `_compile_and_test` in `ReSynthesisPipeline` dynamically inspecting AST parameter and return types to format test arguments accurately for signed functions (`-7i64`).
+
+### 2. Expanded x86/x86_64 Instruction Coverage & Hardware Semantics
+- **BMI2 Non-Flag Shift Instructions**: Added `shlx`, `shrx`, `sarx` (dynamic and register shifts without affecting EFLAGS).
+- **Atomic Exchanges & Compare-and-Swap**:
+  - `xadd` (exchange and add) with full flag updates.
+  - `cmpxchg` (compare and exchange / CAS).
+- **Double-Precision Shifts**:
+  - `shld` (shift left double precision).
+  - `shrd` (shift right double precision).
+- **BMI1 & BMI2 Instructions**:
   - `blsr` (reset lowest set bit: `(x - 1) & x`)
   - `blsi` (isolate lowest set bit: `(-x) & x`)
   - `blsmsk` (mask up to lowest set bit: `(x - 1) ^ x`)
   - `bzhi` (zero high bits starting at specified bit index)
   - `andn` (bitwise AND NOT: `(!a) & b`)
   - `bextr` (bitfield extract with dynamic start & length control word)
-- **Bit Counting & Scans**:
-  - `tzcnt` / `bsf` -> `val.trailing_zeros() as u64`
-  - `lzcnt` / `bsr` -> `val.leading_zeros() as u64`
-  - `bt`, `bts`, `btr`, `btc` (bit test, test-and-set, test-and-reset, test-and-complement)
-- **Endian Byte Manipulation**:
-  - `bswap` lifted via dedicated `Op.BSWAP` and synthesized into idiomatic `val.swap_bytes()`
-- **Sign Extension Instructions**:
-  - `cqo` (sign-extend RAX to RDX:RAX)
-  - `cdq` (sign-extend EAX to EDX:EAX)
-  - `cdqe` (sign-extend EAX to 64-bit RAX)
-  - `cbw`, `cwde`, `cwd`
-- **Integer Division & Modulo**:
-  - Full mathematical modeling of `div` and `idiv` (both 64-bit and 32-bit quotient & remainder)
-- **Conditional Set (SETcc)**:
-  - Universal predicate synthesis for `sete`, `setne`, `setl`, `setle`, `setg`, `setge`, `setb`, `setbe`, `seta`, `setae`, `sets`, `setns`
-- **Register Exchanges**:
-  - `xchg` with safe SSA temporary assignment
-- **Complex Memory Displacements & RIP-Relative Addressing**:
-  - Clean `(base + idx*scale - disp)` synthesis preventing unsigned overflow panics
-  - Exact concrete address calculation for PC-relative `[rip + disp]` references
-
-### 2. Synthesizer & Relooper Hardening
-- **Zeroing Idiom Recognition**: `xor reg, reg` and `sub reg, reg` (in both 64-bit and 32-bit zero-extended forms) are recognized as register-clearing writes rather than reads, eliminating spurious parameter generation.
-- **64-bit Shift Overflow Prevention**: Safe `u128` widening on chained concatenations avoiding rustc `attempt to shift left by 64_i32` compile errors.
-- **Preconditioned Equivalence Certification**: Precondition solver support for bounded primitives like `val.clamp(min, max)` (`min <= max`).
-- **Bounded Loop Unrolling**: Symbolic interpreter in pipeline unrolls `RustWhile` loops up to configurable bound (8 iterations).
+- **Sign Extension Family**: `cqo`, `cdq`, `cdqe`, `cbw`, `cwde`, `cwd`.
 
 ### 3. Expanded Idiom Recognition
 - Added automated matchers for:
+  - `match_branchless_abs`: Matches `cqo / cdq; xor rax, rdx; sub rax, rdx` -> `x.wrapping_abs()`.
   - `match_reset_lowest_set_bit` (`blsr`)
   - `match_and_not` (`andn`)
   - `match_count_trailing_zeros` (`tzcnt` / `bsf`)
   - `match_count_leading_zeros` (`lzcnt` / `bsr`)
   - `match_byte_swap` (`bswap` / `.swap_bytes()`)
   - `match_clamp` (`val.clamp(min, max)`)
+  - Hardened `match_gcd` against false positive loop captures.
 
 ### 4. Expanded Verification & Standalone Crate
-- `tests/`: Test suite expanded from 33 to **54 tests** with a 100% pass rate.
-- `resynthesized_crate/`: Expanded from 8 to **15 verified routines** with complete formal SMT certificates (`.proof.json`) and summary manifest.
+- `tests/`: Test suite expanded from 54 to **67 tests** with a 100% pass rate.
+- `resynthesized_crate/`: Expanded from 15 to **22 verified routines** with complete formal SMT certificates (`.proof.json`) and summary manifest.
 - Verified to pass both `cargo check` and `cargo check --tests` cleanly in 0.31s.
 
 ---
@@ -60,13 +51,13 @@ We are proud to announce the release of **Silicon Archeology v0.2.0** — an agg
 ## 📦 What's Included
 
 - `silicon_archeology/`: Core re-synthesis framework (`ir/`, `lifter/`, `symbolic/`, `synthesizer/`, `verifier/`, `cli.py`, `pipeline.py`).
-- `tests/`: 54 automated unit and integration tests with 100% pass rate.
+- `tests/`: 67 automated unit and integration tests with 100% pass rate.
 - `examples/`:
   - `01_branchless_algorithms.py`: Branchless min/max, popcount, bit-twiddling.
   - `02_murmur_hash_round.py`: 64-bit Murmur3 avalanche mixer.
   - `03_tea_cipher_block.py`: 32-bit TEA cipher Feistel round.
-  - `04_full_resynthesis_to_crate.py`: End-to-end multi-routine batch synthesizer (15 verified routines).
-- `resynthesized_crate/`: Generated Rust crate with 15 verified routines and proof certificates.
+  - `04_full_resynthesis_to_crate.py`: End-to-end multi-routine batch synthesizer (22 verified routines).
+- `resynthesized_crate/`: Generated Rust crate with 22 verified routines and proof certificates.
 
 ---
 

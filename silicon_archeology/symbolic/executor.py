@@ -101,7 +101,7 @@ class SymbolicExecutor:
             elif op == Op.UDIV:
                 return z3.UDiv(left, right)
             elif op == Op.REM:
-                return left % right
+                return z3.SRem(left, right)
             elif op == Op.UREM:
                 return z3.URem(left, right)
             elif op == Op.AND:

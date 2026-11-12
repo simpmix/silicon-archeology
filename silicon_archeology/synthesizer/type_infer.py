@@ -49,11 +49,42 @@ class TypeInference:
                 # Check operations for signedness and widths
                 self._inspect_signedness(stmt)
 
+        # Propagate signedness across register assignments (e.g. rax := rdi)
+        def get_reg_name(e: Any) -> Optional[str]:
+            if isinstance(e, Var):
+                return e.name
+            if isinstance(e, ExtractExpr) and isinstance(e.expr, Var):
+                return e.expr.name
+            if isinstance(e, UnaryExpr):
+                return get_reg_name(e.operand)
+            return None
+
+        changed = True
+        while changed:
+            changed = False
+            for label in self.cfg.reverse_post_order():
+                bb = self.cfg.blocks.get(label)
+                if not bb:
+                    continue
+                for stmt in bb.stmts:
+                    if isinstance(stmt, Assign):
+                        d = stmt.dest.name.lower()
+                        s = get_reg_name(stmt.expr)
+                        if s:
+                            s = s.lower()
+                            if d in self.signed_regs and s not in self.signed_regs:
+                                self.signed_regs.add(s)
+                                changed = True
+                            elif s in self.signed_regs and d not in self.signed_regs:
+                                self.signed_regs.add(d)
+                                changed = True
+
         # Sort parameters according to canonical ABI order
         read_order = sorted(read_order, key=lambda r: candidate_params.index(r) if r in candidate_params else 999)
 
+        all_vars = set(read_order) | written | self.signed_regs | self.width_32_regs
         type_map: Dict[str, str] = {}
-        for reg in read_order:
+        for reg in all_vars:
             is_signed = reg in self.signed_regs
             is_32 = reg in self.width_32_regs
             if is_signed:
@@ -123,12 +154,20 @@ class TypeInference:
                 return e.name
             if isinstance(e, ExtractExpr) and isinstance(e.expr, Var):
                 return e.expr.name
+            if isinstance(e, UnaryExpr):
+                return extract_reg(e.operand)
             return None
 
-        if isinstance(stmt, Assign):
+        if isinstance(stmt, Comment):
+            m = stmt.text.lower()
+            if any(k in m for k in ("cqo", "cdq", "cdqe", "cwde", "cbw", "cwd", "idiv")):
+                self.signed_regs.add("rax")
+                self.signed_regs.add("rdx")
+
+        elif isinstance(stmt, Assign):
             expr = stmt.expr
             if isinstance(expr, BinaryExpr):
-                if expr.op in (Op.LT, Op.LE, Op.GT, Op.GE, Op.SAR):
+                if expr.op in (Op.LT, Op.LE, Op.GT, Op.GE, Op.SAR, Op.DIV, Op.REM):
                     r_left = extract_reg(expr.left)
                     if r_left:
                         self.signed_regs.add(r_left)

@@ -96,7 +96,7 @@ class ReSynthesisPipeline:
 
         # 5. Compile and test with rustc
         compiles, comp_out, tests_ok, test_out = self._compile_and_test(
-            rust_src, name, sample_tests
+            rust_src, name, sample_tests, rust_ast
         )
 
         return PipelineResult(
@@ -279,6 +279,8 @@ class ReSynthesisPipeline:
             rec = self._eval_rust_expr(expr.receiver, env)
             if expr.method == "wrapping_neg":
                 return -rec
+            elif expr.method == "wrapping_abs":
+                return z3.If(rec < 0, -rec, rec)
             elif expr.method == "wrapping_sub":
                 arg = self._eval_rust_expr(expr.args[0], env)
                 return rec - arg
@@ -372,7 +374,8 @@ class ReSynthesisPipeline:
         return z3.BitVecVal(0, 64)
 
     def _compile_and_test(
-        self, rust_src: str, routine_name: str, sample_tests: Optional[List[Tuple[List[int], int]]]
+        self, rust_src: str, routine_name: str, sample_tests: Optional[List[Tuple[List[int], int]]],
+        rust_ast: Optional[RustFunction] = None
     ) -> Tuple[bool, str, bool, str]:
         """Compiles generated Rust source using rustc and executes verification tests."""
         test_main_lines = [
@@ -382,13 +385,22 @@ class ReSynthesisPipeline:
         ]
 
         if sample_tests:
+            is_signed_ret = rust_ast is not None and getattr(rust_ast, "return_type", "").startswith("i")
             for idx, (args, expected) in enumerate(sample_tests):
-                args_str = ", ".join(f"{a}u64" for a in args)
+                formatted_args = []
+                for p_idx, a in enumerate(args):
+                    p_type = getattr(rust_ast.params[p_idx], "type_name", "u64") if (rust_ast and p_idx < len(rust_ast.params)) else ("i64" if is_signed_ret else "u64")
+                    if p_type.startswith("i"):
+                        formatted_args.append(f"{a}i64" if not str(a).endswith("i64") else str(a))
+                    else:
+                        formatted_args.append(f"{a}u64" if not str(a).endswith("u64") else str(a))
+                args_str = ", ".join(formatted_args)
+                exp_str = f"{expected}i64" if is_signed_ret else f"{expected}u64"
                 test_main_lines.append(
                     f"    let res = {routine_name}({args_str});"
                 )
                 test_main_lines.append(
-                    f"    assert_eq!(res, {expected}u64, \"Test case {idx} failed\");"
+                    f"    assert_eq!(res, {exp_str}, \"Test case {idx} failed\");"
                 )
             test_main_lines.append("    println!(\"ALL_TESTS_PASS\");")
         else:

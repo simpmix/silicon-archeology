@@ -1,0 +1,32 @@
+{
+  "target_routine": "bmi2_shlx",
+  "status": "PROVEN_EQUIVALENT",
+  "solver": "Z3 Theorem Prover",
+  "solver_version": "5.4.1",
+  "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+  "num_paths_verified": 1,
+  "inputs_verified": [
+    "rax",
+    "rbx",
+    "rcx",
+    "rdx",
+    "rsi",
+    "rdi",
+    "rbp",
+    "rsp",
+    "r8",
+    "r9",
+    "r10",
+    "r11",
+    "r12",
+    "r13",
+    "r14",
+    "r15"
+  ],
+  "outputs_verified": [
+    "rax"
+  ],
+  "verification_time_ms": 3.9822999970056117,
+  "proof_hash": "13e894cf6644399ec33429eb29123641b83a7ece3bd1bfb3c0549579f064bb88",
+  "counterexample": null
+}

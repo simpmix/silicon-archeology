@@ -161,14 +161,115 @@ pub fn clamp_val(val: i64, min_val: i64, max_val: i64) -> i64 {
 /// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
 pub fn unsigned_divide(mut a: u64, mut b: u64) -> u64 {
     let mut rax: u64 = 0;
+    let mut _div_q_2: u64 = 0;
+    let mut _div_r_2: u64 = 0;
     let mut c: u64 = 0;
     // mov rax, rdi
     rax = a;
     // xor rdx, rdx
-    c = (c ^ c);
+    c = 0;
     // div rsi
-    rax = (rax / b);
-    c = (rax % b);
+    _div_q_2 = (rax / b);
+    _div_r_2 = (rax % b);
+    rax = _div_q_2;
+    c = _div_r_2;
+    // ret 
+    return rax;
+}
+
+/// Formally synthesized routine `signed_divide`.
+/// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
+pub fn signed_divide(mut a: i64, mut b: i64) -> i64 {
+    let mut rax: i64 = 0;
+    let mut _idiv_q_2: i64 = 0;
+    let mut _idiv_r_2: i64 = 0;
+    let mut c: i64 = 0;
+    // mov rax, rdi
+    rax = a;
+    // cqo 
+    c = (if (((rax >> 63) & 1) == 1) { -1 } else { 0 });
+    // idiv rsi
+    _idiv_q_2 = (rax / b);
+    _idiv_r_2 = (rax % b);
+    rax = _idiv_q_2;
+    c = _idiv_r_2;
+    // ret 
+    return rax;
+}
+
+/// Formally synthesized routine `unsigned_modulo`.
+/// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
+pub fn unsigned_modulo(mut a: u64, mut b: u64) -> u64 {
+    let mut rax: u64 = 0;
+    let mut _div_q_2: u64 = 0;
+    let mut _div_r_2: u64 = 0;
+    let mut c: u64 = 0;
+    // mov rax, rdi
+    rax = a;
+    // xor rdx, rdx
+    c = 0;
+    // div rsi
+    _div_q_2 = (rax / b);
+    _div_r_2 = (rax % b);
+    rax = _div_q_2;
+    c = _div_r_2;
+    // mov rax, rdx
+    rax = c;
+    // ret 
+    return rax;
+}
+
+/// Computes branchless absolute value via sign-extension mask:
+/// `x.wrapping_abs()`.
+pub fn branchless_abs(x: i64) -> i64 {
+    return x.wrapping_abs();
+}
+
+/// Formally synthesized routine `bmi2_shlx`.
+/// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
+pub fn bmi2_shlx(mut a: u64, mut b: u64) -> u64 {
+    let mut rax: u64 = 0;
+    // shlx rax, rdi, rsi
+    rax = (a << b);
+    // ret 
+    return rax;
+}
+
+/// Formally synthesized routine `atomic_xadd`.
+/// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
+pub fn atomic_xadd(mut a: u64, mut b: u64) -> u64 {
+    let mut rax: u64 = 0;
+    let mut _tmp_xadd_0: u64 = 0;
+    // xadd rdi, rsi
+    _tmp_xadd_0 = (a + b);
+    b = a;
+    a = _tmp_xadd_0;
+    // mov rax, rdi
+    rax = a;
+    // ret 
+    return rax;
+}
+
+/// Formally synthesized routine `shld_step`.
+/// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
+pub fn shld_step(mut a: u64, mut b: u64) -> u64 {
+    let mut rax: u64 = 0;
+    // mov rax, rdi
+    rax = a;
+    // shld rax, rsi, 4
+    rax = ((rax << 4) | (b >> (64 - 4)));
+    // ret 
+    return rax;
+}
+
+/// Formally synthesized routine `shrd_step`.
+/// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
+pub fn shrd_step(mut a: u64, mut b: u64) -> u64 {
+    let mut rax: u64 = 0;
+    // mov rax, rdi
+    rax = a;
+    // shrd rax, rsi, 4
+    rax = ((rax >> 4) | (b << (64 - 4)));
     // ret 
     return rax;
 }
@@ -254,5 +355,46 @@ mod tests {
     #[test]
     fn test_unsigned_divide() {
         assert_eq!(unsigned_divide(100, 7), 14);
+    }
+
+    #[test]
+    fn test_signed_divide() {
+        assert_eq!(signed_divide(-42, 6), -7);
+        assert_eq!(signed_divide(100, -5), -20);
+    }
+
+    #[test]
+    fn test_unsigned_modulo() {
+        assert_eq!(unsigned_modulo(14, 4), 2);
+        assert_eq!(unsigned_modulo(100, 7), 2);
+    }
+
+    #[test]
+    fn test_branchless_abs() {
+        assert_eq!(branchless_abs(-42), 42);
+        assert_eq!(branchless_abs(100), 100);
+        assert_eq!(branchless_abs(0), 0);
+    }
+
+    #[test]
+    fn test_bmi2_shlx() {
+        assert_eq!(bmi2_shlx(5, 3), 40);
+    }
+
+    #[test]
+    fn test_atomic_xadd() {
+        assert_eq!(atomic_xadd(15, 27), 42);
+    }
+
+    #[test]
+    fn test_shld_step() {
+        // (0x12 << 4) | (0xF000000000000000 >> 60)
+        assert_eq!(shld_step(0x12, 0xF000000000000000), 0x12F);
+    }
+
+    #[test]
+    fn test_shrd_step() {
+        // (0x120 >> 4) | (0x0F << 60)
+        assert_eq!(shrd_step(0x120, 0x0F), 0xF000000000000012);
     }
 }

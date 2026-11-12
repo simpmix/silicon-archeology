@@ -1,0 +1,32 @@
+{
+  "target_routine": "signed_divide",
+  "status": "PROVEN_EQUIVALENT",
+  "solver": "Z3 Theorem Prover",
+  "solver_version": "5.4.1",
+  "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+  "num_paths_verified": 1,
+  "inputs_verified": [
+    "rax",
+    "rbx",
+    "rcx",
+    "rdx",
+    "rsi",
+    "rdi",
+    "rbp",
+    "rsp",
+    "r8",
+    "r9",
+    "r10",
+    "r11",
+    "r12",
+    "r13",
+    "r14",
+    "r15"
+  ],
+  "outputs_verified": [
+    "rax"
+  ],
+  "verification_time_ms": 2.8333000009297393,
+  "proof_hash": "7f9424ccb71f96ae67f2670024b67bb8ba3d8bc5b0cb5dc78c6d87143d8397d7",
+  "counterexample": null
+}

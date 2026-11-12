@@ -244,3 +244,91 @@ def test_pipeline_cqo_sign_extension():
     res = pipe.process(name="cqo_sign_extract", code_bytes=code)
     assert res.is_equivalent is True
     assert res.compiles_successfully is True
+
+
+def test_pipeline_signed_idiv():
+    pipe = ReSynthesisPipeline(mode=64)
+    # mov rax, rdi; cqo; idiv rsi; ret
+    code = bytes.fromhex("48 89 f8 48 99 48 f7 fe c3")
+    sample_tests = [
+        ([-42, 6], -7),
+        ([100, -5], -20),
+        ([50, 10], 5),
+    ]
+    res = pipe.process(name="signed_idiv_test", code_bytes=code, sample_tests=sample_tests)
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
+    assert "i64" in res.rust_source
+
+
+def test_pipeline_unsigned_modulo_correctness():
+    pipe = ReSynthesisPipeline(mode=64)
+    # mov rax, rdi; xor rdx, rdx; div rsi; mov rax, rdx; ret
+    code = bytes.fromhex("48 89 f8 48 31 d2 48 f7 f6 48 89 d0 c3")
+    sample_tests = [
+        ([14, 4], 2),
+        ([100, 7], 2),
+        ([25, 5], 0),
+    ]
+    res = pipe.process(name="unsigned_modulo_test", code_bytes=code, sample_tests=sample_tests)
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
+
+
+def test_pipeline_branchless_abs():
+    pipe = ReSynthesisPipeline(mode=64)
+    # mov rax, rdi; cqo; xor rax, rdx; sub rax, rdx; ret
+    code = bytes.fromhex("48 89 f8 48 99 48 31 d0 48 29 d0 c3")
+    sample_tests = [
+        ([-42], 42),
+        ([100], 100),
+        ([0], 0),
+    ]
+    res = pipe.process(name="branchless_abs_test", code_bytes=code, sample_tests=sample_tests)
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
+    assert "wrapping_abs" in res.rust_source
+
+
+def test_pipeline_bmi2_shlx():
+    pipe = ReSynthesisPipeline(mode=64)
+    # shlx rax, rdi, rsi; ret
+    code = bytes.fromhex("c4 e2 c9 f7 c7 c3")
+    sample_tests = [
+        ([5, 3], 40),
+        ([1, 10], 1024),
+    ]
+    res = pipe.process(name="bmi2_shlx_test", code_bytes=code, sample_tests=sample_tests)
+    assert res.is_equivalent is True
+    assert res.compiles_successfully is True
+
+
+def test_pipeline_atomic_xadd():
+    pipe = ReSynthesisPipeline(mode=64)
+    # xadd rdi, rsi; mov rax, rdi; ret
+    code = bytes.fromhex("48 0f c1 f7 48 89 f8 c3")
+    sample_tests = [
+        ([15, 27], 42),
+        ([0, 100], 100),
+    ]
+    res = pipe.process(name="atomic_xadd_test", code_bytes=code, sample_tests=sample_tests)
+    assert res.is_equivalent is True
+    assert res.compiles_successfully is True
+
+
+def test_pipeline_double_shifts_shld_shrd():
+    pipe = ReSynthesisPipeline(mode=64)
+    # mov rax, rdi; shld rax, rsi, 4; ret
+    code_shld = bytes.fromhex("48 89 f8 48 0f a4 f0 04 c3")
+    res_shld = pipe.process(name="shld_test", code_bytes=code_shld)
+    assert res_shld.is_equivalent is True
+    assert res_shld.compiles_successfully is True
+
+    # mov rax, rdi; shrd rax, rsi, 4; ret
+    code_shrd = bytes.fromhex("48 89 f8 48 0f ac f0 04 c3")
+    res_shrd = pipe.process(name="shrd_test", code_bytes=code_shrd)
+    assert res_shrd.is_equivalent is True
+    assert res_shrd.compiles_successfully is True

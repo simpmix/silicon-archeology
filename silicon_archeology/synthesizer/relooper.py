@@ -52,6 +52,8 @@ class Relooper:
             op_map = {Op.NOT: "!", Op.NEG: "-"}
             return RustUnaryOp(op_map.get(expr.op, "!"), self._convert_expr_to_rust(expr.operand))
         elif isinstance(expr, BinaryExpr):
+            if expr.op in (Op.XOR, Op.SUB) and str(expr.left) == str(expr.right):
+                return RustLiteral(0)
             if expr.op == Op.ROL:
                 left_r = self._convert_expr_to_rust(expr.left)
                 if isinstance(expr.right, Constant):
@@ -90,20 +92,23 @@ class Relooper:
             return RustBinaryOp("&", inner_r, RustLiteral(mask))
         elif isinstance(expr, ConcatExpr):
             if len(expr.parts) == 2 and isinstance(expr.parts[0], Constant) and expr.parts[0].value == 0:
-                low_r = self._convert_expr_to_rust(expr.parts[1])
-                mask = (1 << expr.parts[1].bit_width) - 1
+                inner = expr.parts[1]
+                if isinstance(inner, BinaryExpr) and inner.op in (Op.XOR, Op.SUB) and str(inner.left) == str(inner.right):
+                    return RustLiteral(0)
+                low_r = self._convert_expr_to_rust(inner)
+                mask = (1 << inner.bit_width) - 1
                 return RustBinaryOp("&", low_r, RustLiteral(mask))
+            is_u128 = expr.bit_width > 64 or any(p.bit_width >= 64 for p in expr.parts)
             acc = self._convert_expr_to_rust(expr.parts[0])
+            if is_u128:
+                acc = RustCast(acc, "u128")
             for p in expr.parts[1:]:
-                if p.bit_width >= 64:
-                    acc = RustCast(acc, "u128")
-                    acc = RustBinaryOp("<<", acc, RustLiteral(p.bit_width))
-                    p_rust = RustCast(self._convert_expr_to_rust(p), "u128")
-                    acc = RustBinaryOp("|", acc, p_rust)
-                else:
-                    acc = RustBinaryOp("<<", acc, RustLiteral(p.bit_width))
-                    acc = RustBinaryOp("|", acc, self._convert_expr_to_rust(p))
-            if expr.bit_width <= 64 and any(p.bit_width >= 64 for p in expr.parts[1:]):
+                acc = RustBinaryOp("<<", acc, RustLiteral(p.bit_width))
+                p_rust = self._convert_expr_to_rust(p)
+                if is_u128:
+                    p_rust = RustCast(p_rust, "u128")
+                acc = RustBinaryOp("|", acc, p_rust)
+            if expr.bit_width <= 64 and is_u128:
                 acc = RustCast(acc, "u64")
             return acc
         elif isinstance(expr, IteExpr):

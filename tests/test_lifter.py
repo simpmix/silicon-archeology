@@ -201,3 +201,30 @@ def test_lifter_complex_displacement():
     assign_stmts = [s for s in stmts if isinstance(s, Assign)]
     assert len(assign_stmts) >= 1
 
+
+def test_lifter_bmi2_shifts_and_double_shifts():
+    lifter = X86Lifter(mode=64)
+    # shlx rax, rdi, rsi; shrx rax, rdi, rsi; sarx rax, rdi, rsi; shld rax, rsi, 4; shrd rax, rsi, 4; ret
+    code = bytes.fromhex("c4 e2 c9 f7 c7 c4 e2 cb f7 c7 c4 e2 ca f7 c7 48 0f a4 f0 04 48 0f ac f0 04 c3")
+    cfg = lifter.lift_bytes(code, base_address=0x1000)
+    stmts = cfg.blocks[cfg.entry_label].stmts
+    mnemonics = [s.text.split()[0] for s in stmts if hasattr(s, "text")]
+    assert "shlx" in mnemonics
+    assert "shrx" in mnemonics
+    assert "sarx" in mnemonics
+    assert "shld" in mnemonics
+    assert "shrd" in mnemonics
+    assert not any("UNHANDLED" in getattr(s, "text", "") for s in stmts)
+
+
+def test_lifter_xadd_and_cmpxchg():
+    lifter = X86Lifter(mode=64)
+    # xadd rdi, rsi; cmpxchg rdi, rsi; ret
+    code = bytes.fromhex("48 0f c1 f7 48 0f b1 f7 c3")
+    cfg = lifter.lift_bytes(code, base_address=0x1000)
+    stmts = cfg.blocks[cfg.entry_label].stmts
+    mnemonics = [s.text.split()[0] for s in stmts if hasattr(s, "text")]
+    assert "xadd" in mnemonics
+    assert "cmpxchg" in mnemonics
+    assert not any("UNHANDLED" in getattr(s, "text", "") for s in stmts)
+
