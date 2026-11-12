@@ -2,11 +2,11 @@
 Type inference engine for synthesizing idiomatic Rust types from binary operations.
 """
 
-from typing import Dict, Set, List, Tuple, Any
+from typing import Dict, Set, List, Tuple, Any, Optional
 from silicon_archeology.ir.cfg import ControlFlowGraph
 from silicon_archeology.ir.instructions import (
     Assign, MemStore, Branch, Return, BinaryExpr, UnaryExpr,
-    Var, Constant, Op, Stmt, ExtractExpr, ConcatExpr
+    Var, Constant, Op, Stmt, ExtractExpr, ConcatExpr, IteExpr, MemLoad
 )
 
 
@@ -75,6 +75,9 @@ class TypeInference:
         reads: Set[str] = set()
         if isinstance(stmt, Assign):
             self._expr_reads(stmt.expr, reads)
+        elif isinstance(stmt, MemStore):
+            self._expr_reads(stmt.addr, reads)
+            self._expr_reads(stmt.expr, reads)
         elif isinstance(stmt, Branch):
             self._expr_reads(stmt.cond, reads)
         elif isinstance(stmt, Return) and stmt.value:
@@ -97,16 +100,31 @@ class TypeInference:
         elif isinstance(expr, ConcatExpr):
             for p in expr.parts:
                 self._expr_reads(p, reads)
+        elif isinstance(expr, IteExpr):
+            self._expr_reads(expr.cond, reads)
+            self._expr_reads(expr.then_expr, reads)
+            self._expr_reads(expr.else_expr, reads)
+        elif isinstance(expr, MemLoad):
+            self._expr_reads(expr.addr, reads)
 
     def _inspect_signedness(self, stmt: Stmt) -> None:
+        def extract_reg(e: Any) -> Optional[str]:
+            if isinstance(e, Var):
+                return e.name
+            if isinstance(e, ExtractExpr) and isinstance(e.expr, Var):
+                return e.expr.name
+            return None
+
         if isinstance(stmt, Assign):
             expr = stmt.expr
             if isinstance(expr, BinaryExpr):
                 if expr.op in (Op.LT, Op.LE, Op.GT, Op.GE, Op.SAR):
-                    if isinstance(expr.left, Var):
-                        self.signed_regs.add(expr.left.name)
-                    if isinstance(expr.right, Var):
-                        self.signed_regs.add(expr.right.name)
+                    r_left = extract_reg(expr.left)
+                    if r_left:
+                        self.signed_regs.add(r_left)
+                    r_right = extract_reg(expr.right)
+                    if r_right:
+                        self.signed_regs.add(r_right)
                     self.signed_regs.add(stmt.dest.name)
                 if expr.bit_width == 32:
                     self.width_32_regs.add(stmt.dest.name)
@@ -114,7 +132,9 @@ class TypeInference:
             cond = stmt.cond
             if isinstance(cond, BinaryExpr):
                 if cond.op in (Op.LT, Op.LE, Op.GT, Op.GE):
-                    if isinstance(cond.left, Var):
-                        self.signed_regs.add(cond.left.name)
-                    if isinstance(cond.right, Var):
-                        self.signed_regs.add(cond.right.name)
+                    r_left = extract_reg(cond.left)
+                    if r_left:
+                        self.signed_regs.add(r_left)
+                    r_right = extract_reg(cond.right)
+                    if r_right:
+                        self.signed_regs.add(r_right)

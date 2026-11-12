@@ -58,6 +58,7 @@ class ControlFlowGraph:
         """Populate successor and predecessor sets from block terminators."""
         for label, bb in list(self.blocks.items()):
             bb.successors.clear()
+            bb.predecessors.clear()
         for label, bb in list(self.blocks.items()):
             term = bb.terminator
             if isinstance(term, Branch):

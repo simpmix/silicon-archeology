@@ -110,3 +110,37 @@ def test_pipeline_certificate_integrity():
     # Ensure JSON serializable
     parsed = eval(cert.to_json().replace("true", "True").replace("false", "False").replace("null", "None"))
     assert parsed["status"] == "PROVEN_EQUIVALENT"
+
+
+def test_pipeline_unnamed_branchless_idiom():
+    pipe = ReSynthesisPipeline(mode=64)
+    # Routine without 'min' in name: must still detect idiom and prove equivalent
+    code = bytes.fromhex("48 39 f7 48 0f 4f fe 48 89 f8 c3")
+    res = pipe.process(name="routine", code_bytes=code)
+
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
+    assert "std::cmp::min" in res.rust_source
+
+
+def test_pipeline_movsxd():
+    pipe = ReSynthesisPipeline(mode=64)
+    # movsxd rax, edi; ret
+    code = bytes.fromhex("48 63 c7 c3")
+    res = pipe.process(name="sign_extend_test", code_bytes=code)
+
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
+
+
+def test_pipeline_bswap():
+    pipe = ReSynthesisPipeline(mode=64)
+    # mov rax, rdi; bswap rax; ret
+    code = bytes.fromhex("48 89 f8 48 0f c8 c3")
+    res = pipe.process(name="byte_reverse", code_bytes=code)
+
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True

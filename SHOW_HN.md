@@ -1,6 +1,6 @@
 # Show HN: Silicon Archeology – SMT-Driven Binary-to-Compilable-Rust Re-Synthesis
 
-**Link**: https://github.com/silicon-archeology/silicon-archeology
+**Link**: https://github.com/simpmix/silicon-archeology
 
 Hey HN!
 
@@ -52,7 +52,7 @@ pub fn branchless_min(a: i64, b: i64) -> i64 {
 ### Try it out
 
 ```bash
-git clone https://github.com/silicon-archeology/silicon-archeology.git
+git clone https://github.com/simpmix/silicon-archeology.git
 cd silicon-archeology
 pip install -r requirements.txt
 python -m silicon_archeology.cli pipeline "48 89 f8 48 01 f0 c3" --name add_two

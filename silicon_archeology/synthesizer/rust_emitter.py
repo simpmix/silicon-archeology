@@ -9,7 +9,7 @@ from silicon_archeology.synthesizer.ast import (
     RustFunction, RustParam, RustStmt, RustLet, RustAssignStmt,
     RustReturn, RustExpr, RustIdent, RustLiteral, RustBinaryOp,
     RustMethodCall, RustComment, RustIfStmt, RustWhile, RustLoop,
-    RustUnaryOp, RustCast, RustCall
+    RustUnaryOp, RustCast, RustCall, RustIfExpr, RustIndex
 )
 from silicon_archeology.synthesizer.relooper import Relooper
 from silicon_archeology.synthesizer.type_infer import TypeInference
@@ -23,35 +23,18 @@ class RustEmitter:
 
     def synthesize(self) -> RustFunction:
         """Synthesizes a complete, idiomatic Rust function."""
-        # 1. Check for algorithmic idioms first
-        if "popcount" in self.name.lower():
-            idiom = IdiomMatcher.match_popcount(self.cfg)
+        # 1. Check for algorithmic idioms by CFG structure and semantics
+        for matcher in (
+            IdiomMatcher.match_isolate_lowest_bit,
+            IdiomMatcher.match_popcount,
+            IdiomMatcher.match_clamp,
+            IdiomMatcher.match_branchless_min,
+            IdiomMatcher.match_gcd,
+        ):
+            idiom = matcher(self.cfg)
             if idiom:
-                idiom.name = self.name
-                return idiom
-
-        if "min" in self.name.lower() or "max" in self.name.lower():
-            idiom = IdiomMatcher.match_branchless_min(self.cfg)
-            if idiom:
-                idiom.name = self.name
-                return idiom
-
-        if "isolate" in self.name.lower():
-            idiom = IdiomMatcher.match_isolate_lowest_bit(self.cfg)
-            if idiom:
-                idiom.name = self.name
-                return idiom
-
-        if "gcd" in self.name.lower():
-            idiom = IdiomMatcher.match_gcd(self.cfg)
-            if idiom:
-                idiom.name = self.name
-                return idiom
-
-        if "clamp" in self.name.lower():
-            idiom = IdiomMatcher.match_clamp(self.cfg)
-            if idiom:
-                idiom.name = self.name
+                if self.name and self.name not in ("synthesized_routine", "routine"):
+                    idiom.name = self.name
                 return idiom
 
         # 2. General type inference
@@ -135,6 +118,11 @@ class RustEmitter:
                 self._rename_expr(s.cond, name_map)
                 self._rename_registers(s.then_body, name_map)
                 self._rename_registers(s.else_body, name_map)
+            elif isinstance(s, RustWhile):
+                self._rename_expr(s.cond, name_map)
+                self._rename_registers(s.body, name_map)
+            elif isinstance(s, RustLoop):
+                self._rename_registers(s.body, name_map)
         return stmts
 
     def _rename_expr(self, expr: RustExpr, name_map: Dict[str, str]) -> None:
@@ -155,3 +143,10 @@ class RustEmitter:
         elif isinstance(expr, RustCall):
             for a in expr.args:
                 self._rename_expr(a, name_map)
+        elif isinstance(expr, RustIfExpr):
+            self._rename_expr(expr.cond, name_map)
+            self._rename_expr(expr.then_expr, name_map)
+            self._rename_expr(expr.else_expr, name_map)
+        elif isinstance(expr, RustIndex):
+            self._rename_expr(expr.base, name_map)
+            self._rename_expr(expr.index, name_map)

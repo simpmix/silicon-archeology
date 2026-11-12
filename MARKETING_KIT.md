@@ -11,7 +11,7 @@ This kit contains distribution materials, social media copy, and community annou
 We built a system that re-synthesizes raw x86_64 binaries into memory-safe, compilable Rust — and mathematically PROVES equivalence with Z3.
 
 Introducing Silicon Archeology 🏛️🦀
-👉 https://github.com/silicon-archeology/silicon-archeology
+👉 https://github.com/simpmix/silicon-archeology
 
 Here’s how SMT-driven re-synthesis works 🧵👇
 
@@ -45,7 +45,7 @@ Average verification time: < 10ms.
 Native check: `cargo check` PASS.
 
 Check it out and star the repo! ⭐
-https://github.com/silicon-archeology/silicon-archeology
+https://github.com/simpmix/silicon-archeology
 
 ---
 
@@ -66,7 +66,7 @@ Instead of traditional decompiler approaches that produce loose pseudo-C, Silico
 5. Emits a full, compilable standalone Rust crate ready for `cargo check` and `cargo test`.
 
 We have an example crate in the repository containing re-synthesized routines for Murmur3 64-bit avalanche mixing, TEA cipher blocks, and branchless algorithms:
-https://github.com/silicon-archeology/silicon-archeology
+https://github.com/simpmix/silicon-archeology
 
 All feedback, PRs, and critiques on our symbolic memory model and CFG structuring are welcome!
 
@@ -75,7 +75,7 @@ All feedback, PRs, and critiques on our symbolic memory model and CFG structurin
 ## 3. Lobste.rs Submission
 
 **Title**: Silicon Archeology: SMT-driven x86 binary re-synthesis to compilable Rust
-**URL**: https://github.com/silicon-archeology/silicon-archeology
+**URL**: https://github.com/simpmix/silicon-archeology
 **Tags**: `rust`, `reversing`, `formalmethods`, `compilers`
 
 **Commentary**:

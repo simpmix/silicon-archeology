@@ -100,3 +100,37 @@ def test_rust_emitter_synthesize():
     assert "mut b: u64" in src
     assert "let mut rax: u64 = 0;" in src
     assert "return rax;" in src
+
+
+def test_type_inference_memstore_and_ite():
+    from silicon_archeology.ir.instructions import MemStore, MemLoad, IteExpr
+    cfg = ControlFlowGraph(entry_label="entry")
+    bb = cfg.get_or_create_block("entry")
+    rdi = Var("rdi", 64)
+    rsi = Var("rsi", 64)
+    # MemStore at rdi of rsi
+    bb.add_stmt(MemStore(rdi, rsi, 64))
+    bb.add_stmt(Return(Var("rax", 64)))
+
+    ti = TypeInference(cfg)
+    params, type_map, ret_type = ti.analyze()
+    assert "rdi" in params
+    assert "rsi" in params
+
+
+def test_rust_emitter_loop_renaming():
+    from silicon_archeology.lifter.x86_lifter import X86Lifter
+    # CFG with a loop: test rsi, rsi; jz end; loop: dec rsi; jmp loop
+    code = bytes.fromhex("48 85 f6 74 06 48 ff ce eb f7 c3")
+    lifter = X86Lifter(mode=64)
+    cfg = lifter.lift_bytes(code)
+    emitter = RustEmitter(cfg, name="loop_test")
+    fn = emitter.synthesize()
+    src = fn.emit()
+    assert "pub fn loop_test" in src
+    # 'rsi' should be renamed to 'b' in executable statements (not comments)
+    code_lines = [l for l in src.splitlines() if not l.strip().startswith("//")]
+    code_text = "\n".join(code_lines)
+    assert "rsi" not in code_text
+    assert "b" in code_text
+

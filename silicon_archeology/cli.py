@@ -20,16 +20,31 @@ from silicon_archeology.pipeline import ReSynthesisPipeline
 
 def parse_bytes(input_str: str) -> bytes:
     """Parses hex string or binary file."""
+    if not input_str:
+        raise ValueError("No input provided. Provide a hex string or binary file path.")
     if os.path.isfile(input_str):
         with open(input_str, "rb") as f:
             return f.read()
     # Try hex string
     clean_hex = input_str.replace(" ", "").replace("\n", "").replace("0x", "").replace(",", "")
+    if len(clean_hex) % 2 != 0:
+        clean_hex = "0" + clean_hex
     return binascii.unhexlify(clean_hex)
 
 
+def get_target_input(args) -> str:
+    """Resolves target input from positional argument, --hex, or --file."""
+    if getattr(args, "hex_str", None):
+        return args.hex_str
+    if getattr(args, "file_path", None):
+        return args.file_path
+    if getattr(args, "target", None):
+        return args.target
+    raise ValueError("Target binary machine code required. Pass hex bytes or --hex / --file.")
+
+
 def cmd_disassemble(args):
-    data = parse_bytes(args.target)
+    data = parse_bytes(get_target_input(args))
     disasm = Disassembler(mode=args.mode)
     insns = disasm.disassemble(data, base_address=args.base)
     print(f"\n[+] Disassembly ({len(insns)} instructions):")
@@ -38,7 +53,7 @@ def cmd_disassemble(args):
 
 
 def cmd_lift(args):
-    data = parse_bytes(args.target)
+    data = parse_bytes(get_target_input(args))
     lifter = X86Lifter(mode=args.mode)
     cfg = lifter.lift_bytes(data, base_address=args.base)
     print(f"\n[+] Lifted Micro-IR CFG ({len(cfg.blocks)} basic blocks):")
@@ -49,7 +64,7 @@ def cmd_lift(args):
 
 
 def cmd_symbolic(args):
-    data = parse_bytes(args.target)
+    data = parse_bytes(get_target_input(args))
     lifter = X86Lifter(mode=args.mode)
     cfg = lifter.lift_bytes(data, base_address=args.base)
     sym = SymbolicExecutor(cfg)
@@ -60,7 +75,7 @@ def cmd_symbolic(args):
 
 
 def cmd_synthesize(args):
-    data = parse_bytes(args.target)
+    data = parse_bytes(get_target_input(args))
     lifter = X86Lifter(mode=args.mode)
     cfg = lifter.lift_bytes(data, base_address=args.base)
     emitter = RustEmitter(cfg, name=args.name)
@@ -72,7 +87,7 @@ def cmd_synthesize(args):
 
 
 def cmd_pipeline(args):
-    data = parse_bytes(args.target)
+    data = parse_bytes(get_target_input(args))
     pipe = ReSynthesisPipeline(mode=args.mode)
     res = pipe.process(name=args.name, code_bytes=data, base_address=args.base)
     print(f"\n{'='*70}")
@@ -109,33 +124,43 @@ def main():
 
     # disasm
     p_disasm = subparsers.add_parser("disasm", help="Disassemble binary bytes")
-    p_disasm.add_argument("target", help="Hex string or path to binary file")
+    p_disasm.add_argument("target", nargs="?", default=None, help="Hex string or path to binary file")
+    p_disasm.add_argument("--hex", "-x", dest="hex_str", default=None, help="Hex string opcode")
+    p_disasm.add_argument("--file", "-f", dest="file_path", default=None, help="Path to binary file")
     p_disasm.add_argument("--base", type=lambda x: int(x, 0), default=0x1000, help="Base address")
     p_disasm.set_defaults(func=cmd_disassemble)
 
     # lift
     p_lift = subparsers.add_parser("lift", help="Lift machine code to Micro-IR CFG")
-    p_lift.add_argument("target", help="Hex string or path to binary file")
+    p_lift.add_argument("target", nargs="?", default=None, help="Hex string or path to binary file")
+    p_lift.add_argument("--hex", "-x", dest="hex_str", default=None, help="Hex string opcode")
+    p_lift.add_argument("--file", "-f", dest="file_path", default=None, help="Path to binary file")
     p_lift.add_argument("--base", type=lambda x: int(x, 0), default=0x1000, help="Base address")
     p_lift.set_defaults(func=cmd_lift)
 
     # symbolic
     p_sym = subparsers.add_parser("symbolic", help="Compute symbolic transfer function")
-    p_sym.add_argument("target", help="Hex string or path to binary file")
+    p_sym.add_argument("target", nargs="?", default=None, help="Hex string or path to binary file")
+    p_sym.add_argument("--hex", "-x", dest="hex_str", default=None, help="Hex string opcode")
+    p_sym.add_argument("--file", "-f", dest="file_path", default=None, help="Path to binary file")
     p_sym.add_argument("--name", default="routine", help="Routine name")
     p_sym.add_argument("--base", type=lambda x: int(x, 0), default=0x1000, help="Base address")
     p_sym.set_defaults(func=cmd_symbolic)
 
     # synthesize
     p_syn = subparsers.add_parser("synthesize", help="Synthesize Rust code from binary")
-    p_syn.add_argument("target", help="Hex string or path to binary file")
+    p_syn.add_argument("target", nargs="?", default=None, help="Hex string or path to binary file")
+    p_syn.add_argument("--hex", "-x", dest="hex_str", default=None, help="Hex string opcode")
+    p_syn.add_argument("--file", "-f", dest="file_path", default=None, help="Path to binary file")
     p_syn.add_argument("--name", default="synthesized_routine", help="Routine name")
     p_syn.add_argument("--base", type=lambda x: int(x, 0), default=0x1000, help="Base address")
     p_syn.set_defaults(func=cmd_synthesize)
 
     # pipeline
     p_pipe = subparsers.add_parser("pipeline", help="Run full pipeline: lift, synthesize, prove, rustc compile")
-    p_pipe.add_argument("target", help="Hex string or path to binary file")
+    p_pipe.add_argument("target", nargs="?", default=None, help="Hex string or path to binary file")
+    p_pipe.add_argument("--hex", "-x", dest="hex_str", default=None, help="Hex string opcode")
+    p_pipe.add_argument("--file", "-f", dest="file_path", default=None, help="Path to binary file")
     p_pipe.add_argument("--name", default="routine", help="Routine name")
     p_pipe.add_argument("--base", type=lambda x: int(x, 0), default=0x1000, help="Base address")
     p_pipe.add_argument("--output", "-o", default=None, help="Output Rust file path")

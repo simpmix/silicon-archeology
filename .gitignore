@@ -10,6 +10,13 @@ __pycache__/
 target/
 **/*.rs.bk
 Cargo.lock
+*.rlib
+*.exe
+
+# Python packaging
+*.egg-info/
+dist/
+build/
 
 # Environments
 .venv/

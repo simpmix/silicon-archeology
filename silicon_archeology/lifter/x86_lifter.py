@@ -160,20 +160,21 @@ class X86Lifter:
                 extended = src
             stmts.extend(self._assign_to_dest(ops[0], extended))
 
-        elif m == "movsx":
+        elif m in ("movsx", "movsxd"):
             src = self._resolve_operand(ops[1])
             dest_width = ops[0].size_bits
-            # Sign extension can be represented by arithmetic shift or conditional
-            # For IR, we can use an Extract and Concat with sign bit or ITE
-            sign_bit = ExtractExpr(src, src.bit_width - 1, src.bit_width - 1)
             pad_len = dest_width - src.bit_width
-            sign_pads = IteExpr(
-                BinaryExpr(Op.EQ, sign_bit, Constant(1, 1), 1),
-                Constant((1 << pad_len) - 1, pad_len),
-                Constant(0, pad_len),
-                pad_len
-            )
-            extended = ConcatExpr([sign_pads, src], dest_width)
+            if pad_len > 0:
+                sign_bit = ExtractExpr(src, src.bit_width - 1, src.bit_width - 1)
+                sign_pads = IteExpr(
+                    BinaryExpr(Op.EQ, sign_bit, Constant(1, 1), 1),
+                    Constant((1 << pad_len) - 1, pad_len),
+                    Constant(0, pad_len),
+                    pad_len
+                )
+                extended = ConcatExpr([sign_pads, src], dest_width)
+            else:
+                extended = src
             stmts.extend(self._assign_to_dest(ops[0], extended))
 
         elif m == "lea":
@@ -280,6 +281,33 @@ class X86Lifter:
             op_code = Op.ROL if m == "rol" else Op.ROR
             res = BinaryExpr(op_code, dst_val, shift_val, ops[0].size_bits)
             stmts.extend(self._assign_to_dest(ops[0], res))
+
+        elif m == "bswap":
+            dst_val = self._resolve_operand(ops[0])
+            w = ops[0].size_bits
+            num_bytes = w // 8
+            byte_parts = [
+                ExtractExpr(dst_val, i * 8 + 7, i * 8)
+                for i in range(num_bytes)
+            ]
+            swapped = ConcatExpr(byte_parts, w) if num_bytes > 1 else dst_val
+            stmts.extend(self._assign_to_dest(ops[0], swapped))
+
+        elif m == "push":
+            src = self._resolve_operand(ops[0])
+            rsp = Var("rsp", 64)
+            w = ops[0].size_bits // 8
+            new_rsp = BinaryExpr(Op.SUB, rsp, Constant(w, 64), 64)
+            stmts.append(Assign(rsp, new_rsp))
+            stmts.append(MemStore(new_rsp, src, ops[0].size_bits))
+
+        elif m == "pop":
+            rsp = Var("rsp", 64)
+            w = ops[0].size_bits // 8
+            loaded = MemLoad(rsp, ops[0].size_bits)
+            stmts.extend(self._assign_to_dest(ops[0], loaded))
+            new_rsp = BinaryExpr(Op.ADD, rsp, Constant(w, 64), 64)
+            stmts.append(Assign(rsp, new_rsp))
 
         # Comparisons
         elif m == "cmp":

@@ -110,7 +110,7 @@ class IdiomMatcher:
     def match_clamp(cfg: ControlFlowGraph) -> Optional[RustFunction]:
         """Matches clamped integer bounds checks."""
         all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
-        if "clamp" in all_text or ("cmov" in all_text and len(cfg.blocks.values()) <= 2):
+        if "clamp" in all_text or all_text.count("cmov") >= 2:
             return RustFunction(
                 name="clamp_i32",
                 params=[RustParam("val", "i32"), RustParam("min_val", "i32"), RustParam("max_val", "i32")],

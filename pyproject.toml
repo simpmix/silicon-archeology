@@ -34,3 +34,7 @@ dev = [
 [project.scripts]
 silicon-archeology = "silicon_archeology.cli:main"
 silicon = "silicon_archeology.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["silicon_archeology*"]
+

@@ -94,3 +94,29 @@ def test_lifter_loop_detection():
     assert len(loops) == 1
     assert loops[0].header != ""
     assert loops[0].latch != ""
+
+
+def test_lifter_movsxd_and_bswap():
+    lifter = X86Lifter(mode=64)
+    # movsxd rax, edi; bswap rax; ret
+    code = bytes.fromhex("48 63 c7 48 0f c8 c3")
+    cfg = lifter.lift_bytes(code, base_address=0x1000)
+    stmts = cfg.blocks[cfg.entry_label].stmts
+    mnemonics = [s.text.split()[0] for s in stmts if hasattr(s, "text")]
+    assert "movsxd" in mnemonics
+    assert "bswap" in mnemonics
+    # Ensure not unhandled
+    assert not any("UNHANDLED" in getattr(s, "text", "") for s in stmts)
+
+
+def test_lifter_push_pop():
+    lifter = X86Lifter(mode=64)
+    # push rdi; pop rax; ret
+    code = bytes.fromhex("57 58 c3")
+    cfg = lifter.lift_bytes(code, base_address=0x1000)
+    stmts = cfg.blocks[cfg.entry_label].stmts
+    mnemonics = [s.text.split()[0] for s in stmts if hasattr(s, "text")]
+    assert "push" in mnemonics
+    assert "pop" in mnemonics
+    assert not any("UNHANDLED" in getattr(s, "text", "") for s in stmts)
+

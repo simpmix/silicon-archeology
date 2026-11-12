@@ -100,7 +100,7 @@ class RustIfExpr(RustExpr):
     else_expr: RustExpr
 
     def emit(self, indent: int = 0) -> str:
-        return f"if {self.cond.emit(indent)} {{ {self.then_expr.emit(indent)} }} else {{ {self.else_expr.emit(indent)} }}"
+        return f"(if {self.cond.emit(indent)} {{ {self.then_expr.emit(indent)} }} else {{ {self.else_expr.emit(indent)} }})"
 
 
 @dataclass

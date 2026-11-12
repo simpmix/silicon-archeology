@@ -6,13 +6,14 @@ from typing import Dict, List, Set, Optional, Tuple, Any
 from silicon_archeology.ir.cfg import ControlFlowGraph, BasicBlock, Loop
 from silicon_archeology.ir.instructions import (
     Stmt, Assign, MemStore, Branch, Jump, Return, Nop, Comment,
-    Expr, Var, Constant, BinaryExpr, UnaryExpr, ExtractExpr, Op, ConcatExpr
+    Expr, Var, Constant, BinaryExpr, UnaryExpr, ExtractExpr, Op, ConcatExpr,
+    IteExpr, MemLoad
 )
 from silicon_archeology.synthesizer.ast import (
     RustStmt, RustLet, RustAssignStmt, RustReturn, RustWhile,
     RustLoop, RustIfStmt, RustBreak, RustContinue, RustComment,
     RustExpr, RustIdent, RustLiteral, RustBinaryOp, RustUnaryOp, RustCast,
-    RustMethodCall
+    RustMethodCall, RustIfExpr, RustIndex
 )
 
 
@@ -87,6 +88,14 @@ class Relooper:
                 acc = RustBinaryOp("<<", acc, RustLiteral(p.bit_width))
                 acc = RustBinaryOp("|", acc, self._convert_expr_to_rust(p))
             return acc
+        elif isinstance(expr, IteExpr):
+            cond_r = self._convert_expr_to_rust(expr.cond)
+            then_r = self._convert_expr_to_rust(expr.then_expr)
+            else_r = self._convert_expr_to_rust(expr.else_expr)
+            return RustIfExpr(cond=cond_r, then_expr=then_r, else_expr=else_r)
+        elif isinstance(expr, MemLoad):
+            addr_r = self._convert_expr_to_rust(expr.addr)
+            return RustIndex(base=RustIdent("mem"), index=addr_r)
         return RustLiteral(0)
 
     def _convert_stmt_to_rust(self, stmt: Stmt) -> Optional[RustStmt]:
@@ -96,6 +105,10 @@ class Relooper:
                 return None  # Drop intermediate flag assignments
             val_r = self._convert_expr_to_rust(stmt.expr)
             return RustAssignStmt(dest=RustIdent(dest_name), value=val_r)
+        elif isinstance(stmt, MemStore):
+            addr_r = self._convert_expr_to_rust(stmt.addr)
+            val_r = self._convert_expr_to_rust(stmt.expr)
+            return RustAssignStmt(dest=RustIndex(base=RustIdent("mem"), index=addr_r), value=val_r)
         elif isinstance(stmt, Return):
             if stmt.value:
                 return RustReturn(expr=self._convert_expr_to_rust(stmt.value))

@@ -122,9 +122,10 @@ $$\begin{cases}
 
 ### Installation
 ```bash
-git clone https://github.com/silicon-archeology/silicon-archeology.git
+git clone https://github.com/simpmix/silicon-archeology.git
 cd silicon-archeology
 pip install -r requirements.txt
+pip install -e .
 ```
 
 ### CLI Commands
@@ -229,6 +230,8 @@ tests/test_lifter.py::test_lifter_arithmetic_instructions PASSED
 tests/test_lifter.py::test_lifter_shifts_and_rotates PASSED
 tests/test_lifter.py::test_lifter_branching_and_cfg PASSED
 tests/test_lifter.py::test_lifter_loop_detection PASSED
+tests/test_lifter.py::test_lifter_movsxd_and_bswap PASSED
+tests/test_lifter.py::test_lifter_push_pop PASSED
 tests/test_pipeline.py::test_pipeline_add_two_routine PASSED
 tests/test_pipeline.py::test_pipeline_bitwise_xor_swap PASSED
 tests/test_pipeline.py::test_pipeline_polynomial_calc PASSED
@@ -236,6 +239,9 @@ tests/test_pipeline.py::test_pipeline_branchless_min_idiom PASSED
 tests/test_pipeline.py::test_pipeline_with_sample_tests PASSED
 tests/test_pipeline.py::test_pipeline_rotate_and_mask PASSED
 tests/test_pipeline.py::test_pipeline_certificate_integrity PASSED
+tests/test_pipeline.py::test_pipeline_unnamed_branchless_idiom PASSED
+tests/test_pipeline.py::test_pipeline_movsxd PASSED
+tests/test_pipeline.py::test_pipeline_bswap PASSED
 tests/test_symbolic.py::test_symbolic_state_read_write PASSED
 tests/test_symbolic.py::test_symbolic_memory_little_endian PASSED
 tests/test_symbolic.py::test_symbolic_executor_arithmetic PASSED
@@ -245,11 +251,13 @@ tests/test_synthesizer.py::test_relooper_linear_sequence PASSED
 tests/test_synthesizer.py::test_idiom_isolate_lowest_set_bit PASSED
 tests/test_synthesizer.py::test_idiom_popcount PASSED
 tests/test_synthesizer.py::test_rust_emitter_synthesize PASSED
+tests/test_synthesizer.py::test_type_inference_memstore_and_ite PASSED
+tests/test_synthesizer.py::test_rust_emitter_loop_renaming PASSED
 tests/test_verifier.py::test_equivalence_identical_functions PASSED
 tests/test_verifier.py::test_equivalence_bitwise_identity PASSED
 tests/test_verifier.py::test_non_equivalence_counterexample PASSED
 tests/test_verifier.py::test_certificate_json_serialization PASSED
-============================= 26 passed in 7.36s ==============================
+============================= 33 passed in 9.73s ==============================
 ```
 
 ---

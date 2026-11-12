@@ -183,7 +183,7 @@ class ReSynthesisPipeline:
 
     def _eval_rust_expr(self, expr: Any, env: Dict[str, z3.BitVecRef]) -> z3.BitVecRef:
         from silicon_archeology.synthesizer.ast import (
-            RustIdent, RustLiteral, RustBinaryOp, RustUnaryOp, RustMethodCall, RustCall, RustCast
+            RustIdent, RustLiteral, RustBinaryOp, RustUnaryOp, RustMethodCall, RustCall, RustCast, RustIfExpr
         )
 
         if isinstance(expr, RustIdent):
@@ -275,6 +275,26 @@ class ReSynthesisPipeline:
                 for b in bits[1:]:
                     count = count + b
                 return count
+            elif expr.method == "swap_bytes":
+                w = rec.size()
+                num_bytes = w // 8
+                byte_parts = [z3.Extract(i * 8 + 7, i * 8, rec) for i in range(num_bytes)]
+                res = byte_parts[0]
+                for b in byte_parts[1:]:
+                    res = z3.Concat(res, b)
+                return res
+
+        elif isinstance(expr, RustIfExpr):
+            cond = self._eval_rust_cond(expr.cond, env)
+            then_v = self._eval_rust_expr(expr.then_expr, env)
+            else_v = self._eval_rust_expr(expr.else_expr, env)
+            if then_v.size() != else_v.size():
+                target_sz = max(then_v.size(), else_v.size())
+                if then_v.size() < target_sz:
+                    then_v = z3.ZeroExt(target_sz - then_v.size(), then_v)
+                if else_v.size() < target_sz:
+                    else_v = z3.ZeroExt(target_sz - else_v.size(), else_v)
+            return z3.If(cond, then_v, else_v)
 
         elif isinstance(expr, RustCall):
             if expr.function == "std::cmp::min":
