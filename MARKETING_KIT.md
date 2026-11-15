@@ -1,6 +1,6 @@
-# 📢 Silicon Archeology: Launch & Distribution Kit
+# 📢 Silicon Archeology: Launch & Distribution Kit (v0.3.0 Bulletproof Edition)
 
-This kit contains distribution materials, social media copy, and community announcements to launch and market **Silicon Archeology** across developer ecosystems.
+This kit contains distribution materials, social media copy, and community announcements to launch and market **Silicon Archeology v0.3.0** across developer ecosystems.
 
 ---
 
@@ -8,9 +8,9 @@ This kit contains distribution materials, social media copy, and community annou
 
 ### Tweet 1 (Hook + Link)
 🚨 Decompilers give you readable C pseudocode.
-We built a system that re-synthesizes raw x86_64 binaries into memory-safe, compilable Rust — and mathematically PROVES equivalence with Z3.
+We built a system that re-synthesizes raw machine code (x86_64 & ARM64!) into memory-safe, compilable Rust — and mathematically PROVES equivalence with Z3.
 
-Introducing Silicon Archeology 🏛️🦀
+Introducing Silicon Archeology v0.3.0 Bulletproof Edition 🏛️🦀
 👉 https://github.com/simpmix/silicon-archeology
 
 Here’s how SMT-driven re-synthesis works 🧵👇
@@ -24,25 +24,26 @@ Ghidra and IDA Pro Hex-Rays are engineering masterpieces, but their output is in
 
 Trying to port this into Rust by hand is a nightmare.
 
-### Tweet 3 (The Insight)
-Instead of syntactic AST rewriting, treat reverse engineering as an SMT synthesis problem:
-1. Lift x86_64 to Micro-IR
-2. Symbolically execute via Z3 BitVectors to derive closed-form transfer functions:
-   F_bin: State_in -> State_out
+### Tweet 3 (Multi-Architecture Lifter)
+In v0.3.0, we added:
+🦀 Native ARM64 (AArch64) lifter with AAPCS64 calling convention
+🦀 SMT Memory Alias Analyzer (MUST / NO / MAY alias proofs)
+🦀 Inductive Loop Invariant Verifier (base case + step + ranking functions)
+🦀 Multi-register tuple returns: `(u64, u64)` for carry-chains & 128-bit mul
 
 ### Tweet 4 (The Equivalence Theorem)
-We synthesize structured Rust ASTs using Relooper + idiom matching (count_ones, min/max, wrapping_neg).
+We synthesize structured Rust ASTs using Relooper + algorithmic idiom matching.
 Then we ask Z3:
 Does there exist ANY 64-bit input where F_bin(x) != F_rust(x)?
 
 UNSAT = 100% Proven Equivalent.
 SAT = Concrete counterexample found.
 
-### Tweet 5 (Results)
+### Tweet 5 (Benchmarks & Standalone Crate)
 Every synthesis emits a cryptographic `.proof.json` certificate with a SHA-256 theorem hash.
-We ran it on Murmur3 mixers, TEA cipher Feistel blocks, and branchless algorithms.
-Average verification time: < 10ms.
-Native check: `cargo check` PASS.
+We built a standalone crate with 30 formally proven routines (ciphers, hash mixers, carry-chains, bit-twiddling).
+Average SMT solving latency: 4.42 ms.
+101 tests passing. `cargo check` PASS.
 
 Check it out and star the repo! ⭐
 https://github.com/simpmix/silicon-archeology
@@ -51,32 +52,21 @@ https://github.com/simpmix/silicon-archeology
 
 ## 2. Reddit r/rust & r/ReverseEngineering Post
 
-**Title**: [Project] Silicon Archeology: SMT-Driven Binary-to-Compilable-Rust Re-Synthesis Engine (Proven via Z3)
+**Title**: [Project] Silicon Archeology: SMT-Driven Binary-to-Compilable-Rust Re-Synthesis Engine (ARM64 + x86_64, Proven via Z3)
 
 **Body**:
 Hey everyone,
 
-We've been working on a project called **Silicon Archeology** that bridges formal methods, binary analysis, and Rust language synthesis.
+We've been working on **Silicon Archeology** (https://github.com/simpmix/silicon-archeology), an SMT-driven engine that lifts stripped machine binaries and re-synthesizes them into idiomatic, compilable, memory-safe Rust with mathematical equivalence proofs generated via the Z3 Theorem Prover.
 
-Instead of traditional decompiler approaches that produce loose pseudo-C, Silicon Archeology:
-1. Disassembles and lifts x86/x86_64 machine code into a bit-precise Micro-IR with explicit flag synthesis (ZF, SF, CF, OF) and hardware 32-bit zero-extension rules.
-2. Symbolically executes the routine in Z3's BitVector and Array theories, deriving closed-form input-to-output transfer functions.
-3. Structures CFGs into clean, high-level Rust statements (`while`, `loop`, `if-else`) via Relooper, recognizing standard library idioms like `count_ones()`, `wrapping_neg()`, and `rotate_left()`.
-4. Formally proves mathematical equivalence using Z3 SMT solving (`UNSAT` on discrepancy assertion), emitting a JSON proof certificate.
-5. Emits a full, compilable standalone Rust crate ready for `cargo check` and `cargo test`.
+In our new v0.3.0 "Bulletproof Edition", we added:
+- **ARM64 (AArch64) Support**: Disassembles and lifts ARM64 machine code to Micro-IR and synthesizes idiomatic Rust using the standard AAPCS64 calling convention.
+- **SMT Memory Aliasing Reasoning**: Formally proves `MUST_ALIAS`, `NO_ALIAS`, and `MAY_ALIAS` relationships using Z3 BitVector theory.
+- **Inductive Loop Invariants**: Mathematical induction verifier proving base case, inductive step preservation, and loop termination ranking functions.
+- **Multi-Register Tuple Returns**: Automatically synthesizes `(u64, u64)` for ADC/SBB carry-chains and 128-bit multiplication.
+- **Automated Benchmarking Suite**: Evaluates lifting latency, Z3 solving time (mean: 4.42 ms), and compiler verification.
+- **30 Verified Routines**: Standalone `resynthesized_crate/` with 30 proven routines passing `cargo check` and `cargo test`.
+- **101 Tests**: Exhaustive test suite with 100% pass rate.
 
-We have an example crate in the repository containing re-synthesized routines for Murmur3 64-bit avalanche mixing, TEA cipher blocks, and branchless algorithms:
-https://github.com/simpmix/silicon-archeology
-
-All feedback, PRs, and critiques on our symbolic memory model and CFG structuring are welcome!
-
----
-
-## 3. Lobste.rs Submission
-
-**Title**: Silicon Archeology: SMT-driven x86 binary re-synthesis to compilable Rust
-**URL**: https://github.com/simpmix/silicon-archeology
-**Tags**: `rust`, `reversing`, `formalmethods`, `compilers`
-
-**Commentary**:
-Silicon Archeology uses Z3's QF_BV theory to formally verify that re-synthesized Rust functions compute the identical mathematical function as raw x86_64 binary code across the entire 64-bit state space. The pipeline includes an automated Relooper structuring engine and exports formal certificates along with compilable Cargo crates.
+We'd love your feedback, critiques, and ideas!
+GitHub: https://github.com/simpmix/silicon-archeology

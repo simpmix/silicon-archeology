@@ -76,8 +76,9 @@ class X86Lifter:
             return Constant(val, op.size_bits)
         elif op.type_name == "reg":
             canon, offset, width = normalize_reg(op.value)
-            parent_var = Var(canon, 64)
-            if offset == 0 and width == 64:
+            full_w = max(width, 64)
+            parent_var = Var(canon, full_w)
+            if offset == 0 and width == full_w:
                 return parent_var
             return ExtractExpr(parent_var, offset + width - 1, offset)
         elif op.type_name == "mem":
@@ -122,13 +123,14 @@ class X86Lifter:
     def _assign_to_dest(self, dest_op: DecodedOperand, expr: Expr, next_ip: Optional[int] = None) -> List[Stmt]:
         if dest_op.type_name == "reg":
             canon, offset, width = normalize_reg(dest_op.value)
-            parent_var = Var(canon, 64)
+            full_w = max(width, 64)
+            parent_var = Var(canon, full_w)
             if expr.bit_width > width:
                 expr = ExtractExpr(expr, width - 1, 0)
             elif expr.bit_width < width:
                 expr = ConcatExpr([Constant(0, width - expr.bit_width), expr], width)
 
-            if width == 64:
+            if width >= 64:
                 return [Assign(parent_var, expr)]
             elif width == 32:
                 # x86-64 zero-extends 32-bit register writes to 64-bit!
@@ -214,14 +216,55 @@ class X86Lifter:
             stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
             stmts.append(Assign(Var("__sf", 1), flag_sign(res)))
             if m == "add":
-                stmts.append(Assign(Var("__cf", 1), flag_carry_add(dst_val, src_val, res)))
+                cf_expr = flag_carry_add(dst_val, src_val, res)
+                last_cmp_info["cf"] = cf_expr
+                stmts.append(Assign(Var("__cf", 1), cf_expr))
                 stmts.append(Assign(Var("__of", 1), flag_overflow_add(dst_val, src_val, res)))
             elif m == "sub":
-                stmts.append(Assign(Var("__cf", 1), flag_carry_sub(dst_val, src_val)))
+                cf_expr = flag_carry_sub(dst_val, src_val)
+                last_cmp_info["cf"] = cf_expr
+                stmts.append(Assign(Var("__cf", 1), cf_expr))
                 stmts.append(Assign(Var("__of", 1), flag_overflow_sub(dst_val, src_val, res)))
             elif m in ("and", "or", "xor"):
+                last_cmp_info["cf"] = Constant(0, 1)
                 stmts.append(Assign(Var("__cf", 1), Constant(0, 1)))
                 stmts.append(Assign(Var("__of", 1), Constant(0, 1)))
+
+        elif m == "adc":
+            dst_val = self._resolve_operand(ops[0])
+            src_val = self._resolve_operand(ops[1])
+            w = ops[0].size_bits
+            cf_val = last_cmp_info.get("cf", Var("__cf", 1))
+            cf_ext = ConcatExpr([Constant(0, w - 1), cf_val], w) if w > 1 else cf_val
+            sum1 = BinaryExpr(Op.ADD, dst_val, src_val, w)
+            res = BinaryExpr(Op.ADD, sum1, cf_ext, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
+            stmts.append(Assign(Var("__sf", 1), flag_sign(res)))
+            c1 = flag_carry_add(dst_val, src_val, sum1)
+            c2 = flag_carry_add(sum1, cf_ext, res)
+            new_cf = BinaryExpr(Op.OR, c1, c2, 1)
+            last_cmp_info["cf"] = new_cf
+            stmts.append(Assign(Var("__cf", 1), new_cf))
+            stmts.append(Assign(Var("__of", 1), flag_overflow_add(dst_val, src_val, res)))
+
+        elif m == "sbb":
+            dst_val = self._resolve_operand(ops[0])
+            src_val = self._resolve_operand(ops[1])
+            w = ops[0].size_bits
+            cf_val = last_cmp_info.get("cf", Var("__cf", 1))
+            cf_ext = ConcatExpr([Constant(0, w - 1), cf_val], w) if w > 1 else cf_val
+            diff1 = BinaryExpr(Op.SUB, dst_val, src_val, w)
+            res = BinaryExpr(Op.SUB, diff1, cf_ext, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            stmts.append(Assign(Var("__zf", 1), flag_zero(res)))
+            stmts.append(Assign(Var("__sf", 1), flag_sign(res)))
+            c1 = flag_carry_sub(dst_val, src_val)
+            c2 = flag_carry_sub(diff1, cf_ext)
+            new_cf = BinaryExpr(Op.OR, c1, c2, 1)
+            last_cmp_info["cf"] = new_cf
+            stmts.append(Assign(Var("__cf", 1), new_cf))
+            stmts.append(Assign(Var("__of", 1), flag_overflow_sub(dst_val, src_val, res)))
 
         elif m == "neg":
             dst_val = self._resolve_operand(ops[0])
@@ -231,6 +274,9 @@ class X86Lifter:
             stmts.append(Assign(Var("__sf", 1), flag_sign(res)))
             # CF is 1 if operand was non-zero
             stmts.append(Assign(Var("__cf", 1), BinaryExpr(Op.NE, dst_val, Constant(0, ops[0].size_bits), 1)))
+            # OF is 1 if operand was 0x800... (MIN_INT)
+            min_int = 1 << (ops[0].size_bits - 1)
+            stmts.append(Assign(Var("__of", 1), BinaryExpr(Op.EQ, dst_val, Constant(min_int, ops[0].size_bits), 1)))
 
         elif m == "not":
             dst_val = self._resolve_operand(ops[0])
@@ -259,17 +305,33 @@ class X86Lifter:
 
         elif m == "imul":
             if len(ops) == 1:
-                # 1-operand: RDX:RAX = RAX * op0
+                # 1-operand: RDX:RAX = RAX * op0 (signed 128-bit)
                 src = self._resolve_operand(ops[0])
                 w = ops[0].size_bits
                 if w == 64:
                     rax = Var("rax", 64)
-                    res = BinaryExpr(Op.MUL, rax, src, 64)
-                    stmts.append(Assign(rax, res))
+                    sign_rax = ExtractExpr(rax, 63, 63)
+                    sign_rax_pad = IteExpr(BinaryExpr(Op.EQ, sign_rax, Constant(1, 1), 1), Constant(-1, 64), Constant(0, 64), 64)
+                    rax_128 = ConcatExpr([sign_rax_pad, rax], 128)
+                    sign_src = ExtractExpr(src, 63, 63)
+                    sign_src_pad = IteExpr(BinaryExpr(Op.EQ, sign_src, Constant(1, 1), 1), Constant(-1, 64), Constant(0, 64), 64)
+                    src_128 = ConcatExpr([sign_src_pad, src], 128)
+                    prod = BinaryExpr(Op.MUL, rax_128, src_128, 128)
+                    tmp_prod = Var(f"_prod_{idx}", 128)
+                    stmts.append(Assign(tmp_prod, prod))
+                    stmts.append(Assign(rax, ExtractExpr(tmp_prod, 63, 0)))
+                    stmts.append(Assign(Var("rdx", 64), ExtractExpr(tmp_prod, 127, 64)))
                 elif w == 32:
                     eax = ExtractExpr(Var("rax", 64), 31, 0)
-                    res = BinaryExpr(Op.MUL, eax, src, 32)
-                    stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), res))
+                    sign_eax = ExtractExpr(eax, 31, 31)
+                    sign_eax_pad = IteExpr(BinaryExpr(Op.EQ, sign_eax, Constant(1, 1), 1), Constant(0xFFFFFFFF, 32), Constant(0, 32), 32)
+                    eax_64 = ConcatExpr([sign_eax_pad, eax], 64)
+                    sign_src = ExtractExpr(src, 31, 31)
+                    sign_src_pad = IteExpr(BinaryExpr(Op.EQ, sign_src, Constant(1, 1), 1), Constant(0xFFFFFFFF, 32), Constant(0, 32), 32)
+                    src_64 = ConcatExpr([sign_src_pad, src], 64)
+                    prod = BinaryExpr(Op.MUL, eax_64, src_64, 64)
+                    stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), ExtractExpr(prod, 31, 0)))
+                    stmts.extend(self._assign_to_dest(DecodedOperand("reg", "edx", 32), ExtractExpr(prod, 63, 32)))
             elif len(ops) == 2:
                 dst_val = self._resolve_operand(ops[0])
                 src_val = self._resolve_operand(ops[1])
@@ -286,12 +348,75 @@ class X86Lifter:
             w = ops[0].size_bits
             if w == 64:
                 rax = Var("rax", 64)
-                res = BinaryExpr(Op.MUL, rax, src, 64)
-                stmts.append(Assign(rax, res))
+                rax_128 = ConcatExpr([Constant(0, 64), rax], 128)
+                src_128 = ConcatExpr([Constant(0, 64), src], 128)
+                prod = BinaryExpr(Op.MUL, rax_128, src_128, 128)
+                tmp_prod = Var(f"_prod_{idx}", 128)
+                stmts.append(Assign(tmp_prod, prod))
+                stmts.append(Assign(rax, ExtractExpr(tmp_prod, 63, 0)))
+                stmts.append(Assign(Var("rdx", 64), ExtractExpr(tmp_prod, 127, 64)))
             elif w == 32:
                 eax = ExtractExpr(Var("rax", 64), 31, 0)
-                res = BinaryExpr(Op.MUL, eax, src, 32)
-                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), res))
+                eax_64 = ConcatExpr([Constant(0, 32), eax], 64)
+                src_64 = ConcatExpr([Constant(0, 32), src], 64)
+                prod = BinaryExpr(Op.MUL, eax_64, src_64, 64)
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "eax", 32), ExtractExpr(prod, 31, 0)))
+                stmts.extend(self._assign_to_dest(DecodedOperand("reg", "edx", 32), ExtractExpr(prod, 63, 32)))
+
+        elif m == "mulx":
+            dst_hi = ops[0]
+            dst_lo = ops[1]
+            src = self._resolve_operand(ops[2])
+            w = dst_hi.size_bits
+            rdx = Var("rdx", 64) if w == 64 else ExtractExpr(Var("rdx", 64), 31, 0)
+            rdx_2w = ConcatExpr([Constant(0, w), rdx], 2 * w)
+            src_2w = ConcatExpr([Constant(0, w), src], 2 * w)
+            prod = BinaryExpr(Op.MUL, rdx_2w, src_2w, 2 * w)
+            stmts.extend(self._assign_to_dest(dst_lo, ExtractExpr(prod, w - 1, 0)))
+            stmts.extend(self._assign_to_dest(dst_hi, ExtractExpr(prod, 2 * w - 1, w)))
+
+        elif m == "rorx":
+            dst_op = ops[0]
+            src_val = self._resolve_operand(ops[1])
+            count_val = self._resolve_operand(ops[2])
+            res = BinaryExpr(Op.ROR, src_val, count_val, dst_op.size_bits)
+            stmts.extend(self._assign_to_dest(dst_op, res))
+
+        # SSE2 / SIMD Vector Instructions
+        elif m in ("movdqa", "movdqu", "movaps", "movups"):
+            src = self._resolve_operand(ops[1])
+            stmts.extend(self._assign_to_dest(ops[0], src))
+
+        elif m in ("pxor", "por", "pand", "pandn"):
+            dst_val = self._resolve_operand(ops[0])
+            src_val = self._resolve_operand(ops[1])
+            w = ops[0].size_bits
+            if m == "pxor":
+                res = BinaryExpr(Op.XOR, dst_val, src_val, w)
+            elif m == "por":
+                res = BinaryExpr(Op.OR, dst_val, src_val, w)
+            elif m == "pand":
+                res = BinaryExpr(Op.AND, dst_val, src_val, w)
+            elif m == "pandn":
+                not_dst = UnaryExpr(Op.NOT, dst_val, w)
+                res = BinaryExpr(Op.AND, not_dst, src_val, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+
+        elif m in ("paddd", "psubd", "paddq", "psubq"):
+            dst_val = self._resolve_operand(ops[0])
+            src_val = self._resolve_operand(ops[1])
+            lane_w = 32 if m in ("paddd", "psubd") else 64
+            op = Op.ADD if m.startswith("padd") else Op.SUB
+            num_lanes = 128 // lane_w
+            lanes = []
+            for i in reversed(range(num_lanes)):
+                hi = (i + 1) * lane_w - 1
+                lo = i * lane_w
+                d_lane = ExtractExpr(dst_val, hi, lo)
+                s_lane = ExtractExpr(src_val, hi, lo)
+                lanes.append(BinaryExpr(op, d_lane, s_lane, lane_w))
+            res = ConcatExpr(lanes, 128) if len(lanes) > 1 else lanes[0]
+            stmts.extend(self._assign_to_dest(ops[0], res))
 
         # Shifts
         elif m in ("shl", "sal", "shr", "sar"):
@@ -758,6 +883,14 @@ class X86Lifter:
                     return BinaryExpr(Op.EQ, and_expr, zero, 1)
                 elif cc in ("ne", "nz"):
                     return BinaryExpr(Op.NE, and_expr, zero, 1)
+                elif cc in ("g", "nle"):
+                    return BinaryExpr(Op.GT, and_expr, zero, 1)
+                elif cc in ("ge", "nl"):
+                    return BinaryExpr(Op.GE, and_expr, zero, 1)
+                elif cc in ("l", "nge"):
+                    return BinaryExpr(Op.LT, and_expr, zero, 1)
+                elif cc in ("le", "ng"):
+                    return BinaryExpr(Op.LE, and_expr, zero, 1)
                 elif cc == "s":
                     sign_bit = ExtractExpr(and_expr, op0.bit_width - 1, op0.bit_width - 1)
                     return BinaryExpr(Op.EQ, sign_bit, Constant(1, 1), 1)

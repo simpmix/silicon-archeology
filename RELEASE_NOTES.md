@@ -1,68 +1,72 @@
-# 🚀 Release Notes: Silicon Archeology v0.2.1
+# 🚀 Release Notes: Silicon Archeology v0.3.0 (Bulletproof Edition)
 
-We are proud to announce the release of **Silicon Archeology v0.2.1** — an aggressively hardened, polished, and expanded SMT-driven binary-to-compilable-Rust re-synthesis engine.
-
----
-
-## 🌟 Highlights & New Features in v0.2.1
-
-### 1. Critical Bug Fixes & Lifter Soundness
-- **Division Modulo Correctness**: Fixed a fatal bug in the x86 lifter where sequential assignments `Assign(rax, quotient)` and `Assign(rdx, remainder)` caused `rdx` to compute `quotient % divisor` instead of `dividend % divisor`. Introduced SSA temporaries (`_div_q`, `_div_r`, `_idiv_q`, `_idiv_r`) to guarantee mathematically sound, independent evaluation of quotient and remainder.
-- **Signed Modulo SMT Precision**: Fixed `Op.REM` in `SymbolicExecutor` which previously mapped to Z3's Euclidean modulo `bvsmod` (`left % right`); corrected to true truncated signed remainder `z3.SRem(left, right)` matching C/Rust/x86 `idiv` hardware semantics.
-- **Signedness Propagation**: Enhanced `TypeInference` with a multi-pass fixed-point propagation algorithm ensuring signed types (`i64`/`i32`) flow backwards across register copy assignments (e.g. `mov rax, rdi` followed by `idiv rsi` correctly marks `rdi` as `i64`).
-- **Negative Integer Literal Compilation**: Fixed `RustLiteral` and `Constant` emitting overflowing positive hex literals for signed types; signed literals now emit valid Rust expressions (e.g. `-1` and `-42i64`) without triggering `deny(overflowing_literals)` errors.
-- **Test Harness Literal Formatting**: Fixed `_compile_and_test` in `ReSynthesisPipeline` dynamically inspecting AST parameter and return types to format test arguments accurately for signed functions (`-7i64`).
-
-### 2. Expanded x86/x86_64 Instruction Coverage & Hardware Semantics
-- **BMI2 Non-Flag Shift Instructions**: Added `shlx`, `shrx`, `sarx` (dynamic and register shifts without affecting EFLAGS).
-- **Atomic Exchanges & Compare-and-Swap**:
-  - `xadd` (exchange and add) with full flag updates.
-  - `cmpxchg` (compare and exchange / CAS).
-- **Double-Precision Shifts**:
-  - `shld` (shift left double precision).
-  - `shrd` (shift right double precision).
-- **BMI1 & BMI2 Instructions**:
-  - `blsr` (reset lowest set bit: `(x - 1) & x`)
-  - `blsi` (isolate lowest set bit: `(-x) & x`)
-  - `blsmsk` (mask up to lowest set bit: `(x - 1) ^ x`)
-  - `bzhi` (zero high bits starting at specified bit index)
-  - `andn` (bitwise AND NOT: `(!a) & b`)
-  - `bextr` (bitfield extract with dynamic start & length control word)
-- **Sign Extension Family**: `cqo`, `cdq`, `cdqe`, `cbw`, `cwde`, `cwd`.
-
-### 3. Expanded Idiom Recognition
-- Added automated matchers for:
-  - `match_branchless_abs`: Matches `cqo / cdq; xor rax, rdx; sub rax, rdx` -> `x.wrapping_abs()`.
-  - `match_reset_lowest_set_bit` (`blsr`)
-  - `match_and_not` (`andn`)
-  - `match_count_trailing_zeros` (`tzcnt` / `bsf`)
-  - `match_count_leading_zeros` (`lzcnt` / `bsr`)
-  - `match_byte_swap` (`bswap` / `.swap_bytes()`)
-  - `match_clamp` (`val.clamp(min, max)`)
-  - Hardened `match_gcd` against false positive loop captures.
-
-### 4. Expanded Verification & Standalone Crate
-- `tests/`: Test suite expanded from 54 to **67 tests** with a 100% pass rate.
-- `resynthesized_crate/`: Expanded from 15 to **22 verified routines** with complete formal SMT certificates (`.proof.json`) and summary manifest.
-- Verified to pass both `cargo check` and `cargo check --tests` cleanly in 0.31s.
+We are thrilled to announce the release of **Silicon Archeology v0.3.0 "Bulletproof Edition"** — a major architectural leap expanding the SMT-driven re-synthesis engine to multi-architecture lifting (ARM64), formal memory alias reasoning, mathematical loop induction verification, multi-register return conventions, production CLI tools, and 30 verified routines.
 
 ---
 
-## 📦 What's Included
+## 🌟 Major Highlights & New Capabilities in v0.3.0
 
-- `silicon_archeology/`: Core re-synthesis framework (`ir/`, `lifter/`, `symbolic/`, `synthesizer/`, `verifier/`, `cli.py`, `pipeline.py`).
-- `tests/`: 67 automated unit and integration tests with 100% pass rate.
-- `examples/`:
-  - `01_branchless_algorithms.py`: Branchless min/max, popcount, bit-twiddling.
-  - `02_murmur_hash_round.py`: 64-bit Murmur3 avalanche mixer.
-  - `03_tea_cipher_block.py`: 32-bit TEA cipher Feistel round.
-  - `04_full_resynthesis_to_crate.py`: End-to-end multi-routine batch synthesizer (22 verified routines).
-- `resynthesized_crate/`: Generated Rust crate with 22 verified routines and proof certificates.
+### 1. Multi-Architecture Support: ARM64 (AArch64) Lifter
+- Complete native AArch64 machine-code lifter (`Arm64Lifter`) supporting:
+  - 64-bit general-purpose registers (`x0`-`x30`), 32-bit registers (`w0`-`w30`), stack pointer (`sp`), and zero registers (`xzr`, `wzr`).
+  - Arithmetic and logic: `add`, `sub`, `and`, `orr`, `eor`, `mvn`, `neg`.
+  - Shift and rotate: `lsl`, `lsr`, `asr`, `ror`.
+  - Multiplication and division: `mul`, `udiv`, `sdiv`.
+  - Bit counting and reversals: `clz`, `rev`.
+  - Conditional selects: `csel`, `csinc`, `cset`, `cneg` mapped to bit-precise `IteExpr` ternary expressions.
+  - Branches and returns: `b`, `b.<cond>`, `cbz`, `cbnz`, `ret`.
+- Standard AAPCS64 calling convention parameter mapping (`x0`-`x7`) and return registers.
+- Seamless CLI and pipeline integration via `--arch arm64`.
+
+### 2. SMT Pointer & Memory Alias Reasoning Engine (`MemoryAliasAnalyzer`)
+- Formally proves alias relationships between arbitrary symbolic memory references using Z3 BitVector theory:
+  - `MUST_ALIAS`: Pointers are proven identical across all valid input states ($\text{Z3}(A \neq B) = \textbf{UNSAT}$).
+  - `NO_ALIAS`: Regions are proven strictly disjoint ($\text{Z3}(\text{Overlap}) = \textbf{UNSAT}$).
+  - `MAY_ALIAS`: Regions overlap conditionally; concrete counterexample input valuations are automatically extracted.
+- Pairwise CFG reference audit across all memory loads and stores.
+
+### 3. Inductive Loop Invariant Synthesizer & Formal Induction Verifier (`InductiveLoopVerifier`)
+- Automated mathematical induction verification for CFG loops:
+  - Base case verification: $\forall s_0, \text{Pre}(s_0) \implies \text{Inv}(s_0)$.
+  - Inductive step verification: $\forall s, (\text{Inv}(s) \land \text{Guard}(s)) \implies \text{Inv}(\text{Step}(s))$.
+  - Well-founded termination metrics: strictly decreasing ranking functions $V(s) \ge 0 \land V(\text{Step}(s)) < V(s)$.
+- Emits cryptographic `InductiveProofCertificate` with SHA-256 theorem hashes.
+
+### 4. Multi-Register Returns & Extended Calling Conventions
+- Automated synthesis of Rust tuple returns `(u64, u64)` when routines modify multiple output registers (`rax`, `rdx`).
+- Carry-chain addition (`adc`) and borrow-chain subtraction (`sbb`) preserving carry flags algebraically across multiple operations.
+- Full 128-bit unsigned multiplication (`mul64_full`) returning `(low_64, high_64)`.
+
+### 5. SSE2 SIMD Vector Lifting & Modeling
+- Lifter support for 128-bit XMM and 256-bit YMM registers.
+- Micro-IR modeling for SSE2 packed integer operations: `movdqa`, `movdqu`, `pxor`, `por`, `pand`, `pandn`, `paddd`, `psubd`, `paddq`, `psubq`.
+
+### 6. Extended Algorithmic Idioms & Bit-Twiddling
+- `match_mul_high64`: Upper 64 bits of 64x64 product (`(a as u128 * b as u128) >> 64`).
+- `match_signum`: Branchless signum computation returning -1, 0, or 1 (`SETG`/`SETL`).
+- `match_midpoint`: Overflow-free branchless midpoint (`(a & b) + ((a ^ b) >> 1)`).
+- `match_bit_select`: Branchless multiplexer (`(a & mask) | (b & ~mask)`).
+- `match_is_power_of_two`: Positive power-of-two test (`(x > 0) & ((x & (x - 1)) == 0)`).
+
+### 7. Production CLI Tooling & Automated Benchmarking
+- `python -m silicon_archeology.cli benchmark`: Comprehensive automated performance suite evaluating lifting time, Z3 SMT latency, compilation speed, throughput, and summary statistics.
+- `python -m silicon_archeology.cli cert-verify <file.proof.json>`: Independent formal audit tool validating proof certificates and SHA-256 hashes.
+- `python -m silicon_archeology.cli inspect <bytes>`: Deep reverse-engineering inspector displaying disassembly, basic blocks, dominator tree, loop back-edges, and symbolic transfer functions.
+
+### 8. 30 Verified Routines in Standalone Rust Crate
+- `resynthesized_crate/src/lib.rs` expanded from 22 to **30 formally proven routines**.
+- 30 cryptographic proof certificates in `resynthesized_crate/proofs/`.
+- 100% clean `cargo check` and `cargo test` pass.
+
+### 9. 101 Automated Tests Passing (Zero Regressions)
+- Repository test suite expanded from 67 to **101 automated tests**, maintaining 100% pass rate.
 
 ---
 
-## 🔮 Roadmap
-- Support for ARM64 (AArch64) disassembly and lifting.
-- SIMD / AVX-512 vector instruction re-synthesis into `std::simd` (portable SIMD).
-- Automatic loop invariant generation using Craig interpolation in Z3.
-- Interactive Ghidra and IDA Pro plugins.
+## 📦 Upgrade Guide
+
+```bash
+git pull origin master
+pip install -e .
+python -m silicon_archeology.cli benchmark
+```

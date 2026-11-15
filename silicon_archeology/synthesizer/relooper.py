@@ -80,9 +80,21 @@ class Relooper:
             op_str = op_map.get(expr.op, "+")
             left_r = self._convert_expr_to_rust(expr.left)
             right_r = self._convert_expr_to_rust(expr.right)
+            if expr.op in (Op.LT, Op.LE, Op.GT, Op.GE):
+                left_r = RustCast(left_r, "i64")
+                right_r = RustCast(right_r, "i64")
+            if expr.bit_width == 128 or getattr(expr.left, "bit_width", 0) == 128 or getattr(expr.right, "bit_width", 0) == 128:
+                left_r = RustCast(left_r, "u128")
+                right_r = RustCast(right_r, "u128")
             return RustBinaryOp(op_str, left_r, right_r)
         elif isinstance(expr, ExtractExpr):
             shift = expr.low
+            if expr.low == 64 and expr.high == 127:
+                inner_r = self._convert_expr_to_rust(expr.expr)
+                return RustCast(RustBinaryOp(">>", inner_r, RustLiteral(64)), "u64")
+            if expr.low == 0 and expr.high == 63 and getattr(expr.expr, "bit_width", 0) == 128:
+                inner_r = self._convert_expr_to_rust(expr.expr)
+                return RustCast(inner_r, "u64")
             inner_r = self._convert_expr_to_rust(expr.expr)
             if shift == 0 and expr.bit_width == 64:
                 return inner_r
@@ -95,6 +107,10 @@ class Relooper:
                 inner = expr.parts[1]
                 if isinstance(inner, BinaryExpr) and inner.op in (Op.XOR, Op.SUB) and str(inner.left) == str(inner.right):
                     return RustLiteral(0)
+                if isinstance(inner, BinaryExpr) and inner.op in (Op.ULT, Op.ULE, Op.UGT, Op.UGE, Op.EQ, Op.NE, Op.LT, Op.LE, Op.GT, Op.GE):
+                    inner_r = self._convert_expr_to_rust(inner)
+                    target_t = "u64" if expr.bit_width == 64 else f"u{expr.bit_width}"
+                    return RustCast(inner_r, target_t)
                 low_r = self._convert_expr_to_rust(inner)
                 mask = (1 << inner.bit_width) - 1
                 return RustBinaryOp("&", low_r, RustLiteral(mask))
@@ -113,6 +129,8 @@ class Relooper:
             return acc
         elif isinstance(expr, IteExpr):
             cond_r = self._convert_expr_to_rust(expr.cond)
+            if isinstance(cond_r, RustLiteral) and isinstance(cond_r.value, int):
+                cond_r = RustLiteral(bool(cond_r.value))
             then_r = self._convert_expr_to_rust(expr.then_expr)
             else_r = self._convert_expr_to_rust(expr.else_expr)
             return RustIfExpr(cond=cond_r, then_expr=then_r, else_expr=else_r)

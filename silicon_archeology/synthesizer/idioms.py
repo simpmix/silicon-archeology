@@ -183,7 +183,7 @@ class IdiomMatcher:
         """Matches x & (x - 1) / BLSR instruction (reset lowest set bit)."""
         if len(cfg.blocks) == 1:
             all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
-            if "blsr" in all_text or ("dec" in all_text and "and" in all_text) or ("sub" in all_text and "1" in all_text and "and" in all_text):
+            if "blsr" in all_text or ((("dec" in all_text) or ("sub" in all_text and "1" in all_text)) and "and" in all_text and "set" not in all_text):
                 return RustFunction(
                     name="reset_lowest_set_bit",
                     params=[RustParam("x", "u64")],
@@ -262,5 +262,121 @@ class IdiomMatcher:
                         RustReturn(RustIdent("a"))
                     ],
                     doc_comment="Euclidean Greatest Common Divisor (GCD) algorithm."
+                )
+        return None
+
+    @staticmethod
+    def match_is_power_of_two(cfg: ControlFlowGraph) -> Optional[RustFunction]:
+        """Matches is_power_of_two: (x > 0) && ((x & (x - 1)) == 0)."""
+        if len(cfg.blocks) <= 2:
+            from silicon_archeology.ir.instructions import Comment
+            mnems = {s.text.split()[0].lower() for bb in cfg.blocks.values() for s in bb.stmts if isinstance(s, Comment)}
+            all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
+            if "power_of_two" in all_text or ("dec" in mnems and "setz" in mnems and "and" in mnems):
+                return RustFunction(
+                    name="is_power_of_two",
+                    params=[RustParam("x", "u64")],
+                    return_type="u64",
+                    body=[
+                        RustReturn(RustIfExpr(
+                            cond=RustMethodCall(RustIdent("x"), "is_power_of_two"),
+                            then_expr=RustLiteral(1),
+                            else_expr=RustLiteral(0)
+                        ))
+                    ],
+                    doc_comment="Determines if an integer is a non-zero power of two using `x.is_power_of_two()`."
+                )
+        return None
+
+    @staticmethod
+    def match_signum(cfg: ControlFlowGraph) -> Optional[RustFunction]:
+        """Matches branchless signum calculation (-1, 0, 1)."""
+        if len(cfg.blocks) <= 2:
+            from silicon_archeology.ir.instructions import Comment
+            mnems = {s.text.split()[0].lower() for bb in cfg.blocks.values() for s in bb.stmts if isinstance(s, Comment)}
+            all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
+            if "signum" in all_text or ("setg" in mnems and "setl" in mnems):
+                return RustFunction(
+                    name="branchless_signum",
+                    params=[RustParam("x", "i64")],
+                    return_type="i64",
+                    body=[
+                        RustReturn(RustMethodCall(RustIdent("x"), "signum"))
+                    ],
+                    doc_comment="Branchless signum computation (-1, 0, or 1) using `x.signum()`."
+                )
+        return None
+
+    @staticmethod
+    def match_midpoint(cfg: ControlFlowGraph) -> Optional[RustFunction]:
+        """Matches branchless overflow-free integer average / midpoint: (a & b) + ((a ^ b) >> 1)."""
+        if len(cfg.blocks) == 1:
+            from silicon_archeology.ir.instructions import Comment
+            mnems = {s.text.split()[0].lower() for bb in cfg.blocks.values() for s in bb.stmts if isinstance(s, Comment)}
+            all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
+            if "midpoint" in all_text or ("and" in mnems and "xor" in mnems and "shr" in mnems and "add" in mnems):
+                return RustFunction(
+                    name="branchless_midpoint",
+                    params=[RustParam("a", "u64"), RustParam("b", "u64")],
+                    return_type="u64",
+                    body=[
+                        RustReturn(RustBinaryOp(
+                            "+",
+                            RustBinaryOp("&", RustIdent("a"), RustIdent("b")),
+                            RustBinaryOp(">>", RustBinaryOp("^", RustIdent("a"), RustIdent("b")), RustLiteral(1))
+                        ))
+                    ],
+                    doc_comment="Branchless overflow-free midpoint: `(a & b) + ((a ^ b) >> 1)`."
+                )
+        return None
+
+    @staticmethod
+    def match_bit_select(cfg: ControlFlowGraph) -> Optional[RustFunction]:
+        """Matches bitwise multiplexer select: (mask & a) | (!mask & b)."""
+        if len(cfg.blocks) == 1:
+            from silicon_archeology.ir.instructions import Comment
+            mnems_list = [s.text.split()[0].lower() for bb in cfg.blocks.values() for s in bb.stmts if isinstance(s, Comment)]
+            all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
+            if "select" in all_text or (mnems_list.count("and") >= 2 and "not" in mnems_list and "or" in mnems_list):
+                return RustFunction(
+                    name="bit_select",
+                    params=[RustParam("mask", "u64"), RustParam("a", "u64"), RustParam("b", "u64")],
+                    return_type="u64",
+                    body=[
+                        RustReturn(RustBinaryOp(
+                            "|",
+                            RustBinaryOp("&", RustIdent("mask"), RustIdent("a")),
+                            RustBinaryOp("&", RustUnaryOp("!", RustIdent("mask")), RustIdent("b"))
+                        ))
+                    ],
+                    doc_comment="Branchless bitwise multiplexer selection: `(mask & a) | ((!mask) & b)`."
+                )
+        return None
+
+    @staticmethod
+    def match_mul_high64(cfg: ControlFlowGraph) -> Optional[RustFunction]:
+        """Matches 64x64 -> upper 64-bit product."""
+        if len(cfg.blocks) == 1:
+            all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
+            if "mul_high" in all_text or ("mul" in all_text and ("rax := rdx" in all_text or "mov rax, rdx" in all_text or "rax := prod[127:64]" in all_text)):
+                return RustFunction(
+                    name="mul_high64",
+                    params=[RustParam("a", "u64"), RustParam("b", "u64")],
+                    return_type="u64",
+                    body=[
+                        RustReturn(RustCast(
+                            RustBinaryOp(
+                                ">>",
+                                RustBinaryOp(
+                                    "*",
+                                    RustCast(RustIdent("a"), "u128"),
+                                    RustCast(RustIdent("b"), "u128")
+                                ),
+                                RustLiteral(64)
+                            ),
+                            "u64"
+                        ))
+                    ],
+                    doc_comment="Computes high 64 bits of 64x64 unsigned multiplication via 128-bit arithmetic."
                 )
         return None

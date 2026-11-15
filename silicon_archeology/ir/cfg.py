@@ -48,6 +48,10 @@ class ControlFlowGraph:
             self.blocks[label] = BasicBlock(label=label)
         return self.blocks[label]
 
+    def add_block(self, block: BasicBlock) -> None:
+        self.blocks[block.label] = block
+
+
     def add_edge(self, src: str, dst: str) -> None:
         src_bb = self.get_or_create_block(src)
         dst_bb = self.get_or_create_block(dst)

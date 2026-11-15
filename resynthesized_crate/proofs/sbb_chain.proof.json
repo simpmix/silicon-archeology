@@ -1,0 +1,33 @@
+{
+  "target_routine": "sbb_chain",
+  "status": "PROVEN_EQUIVALENT",
+  "solver": "Z3 Theorem Prover",
+  "solver_version": "5.4.1",
+  "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax, rdx]",
+  "num_paths_verified": 1,
+  "inputs_verified": [
+    "rax",
+    "rbx",
+    "rcx",
+    "rdx",
+    "rsi",
+    "rdi",
+    "rbp",
+    "rsp",
+    "r8",
+    "r9",
+    "r10",
+    "r11",
+    "r12",
+    "r13",
+    "r14",
+    "r15"
+  ],
+  "outputs_verified": [
+    "rax",
+    "rdx"
+  ],
+  "verification_time_ms": 3.292699984740466,
+  "proof_hash": "28291d74c1e0f44e071e372a107f401bfe43368326fbe1db168a716ae551f841",
+  "counterexample": null
+}

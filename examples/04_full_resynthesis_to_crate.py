@@ -125,6 +125,46 @@ ROUTINES = [
         "name": "shrd_step",
         "bytes": bytes.fromhex("48 89 f8 48 0f ac f0 04 c3"),
         "doc": "Double-precision right shift step via SHRD instruction."
+    },
+    {
+        "name": "adc_chain",
+        "bytes": bytes.fromhex("48 89 f8 48 01 d0 48 89 f2 48 11 ca c3"),
+        "doc": "Multi-register return carry-chain 128-bit addition returning (low, high)."
+    },
+    {
+        "name": "sbb_chain",
+        "bytes": bytes.fromhex("48 89 f8 48 29 d0 48 89 f2 48 19 ca c3"),
+        "doc": "Multi-register return borrow-chain 128-bit subtraction returning (low, high)."
+    },
+    {
+        "name": "mul64_full",
+        "bytes": bytes.fromhex("48 89 f8 48 f7 e6 c3"),
+        "doc": "Unsigned 64x64 full 128-bit multiplication returning (low_64, high_64)."
+    },
+    {
+        "name": "mul_high64",
+        "bytes": bytes.fromhex("48 89 f8 48 f7 e6 48 89 d0 c3"),
+        "doc": "High 64 bits of 64x64 unsigned multiplication via MUL instruction."
+    },
+    {
+        "name": "branchless_signum",
+        "bytes": bytes.fromhex("48 83 ff 00 0f 9f c0 0f 9c c2 0f b6 c0 0f b6 d2 29 d0 48 98 c3"),
+        "doc": "Branchless signum computation returning -1, 0, or 1 via SETG/SETL flags."
+    },
+    {
+        "name": "branchless_midpoint",
+        "bytes": bytes.fromhex("48 89 f8 48 21 f0 48 89 fa 48 31 f2 48 d1 ea 48 01 d0 c3"),
+        "doc": "Overflow-free branchless midpoint ((a & b) + ((a ^ b) >> 1))."
+    },
+    {
+        "name": "bit_select",
+        "bytes": bytes.fromhex("48 89 f8 48 21 f0 48 f7 d7 48 21 d7 48 09 f8 c3"),
+        "doc": "Branchless bitwise multiplexer/select ((a & mask) | (b & ~mask))."
+    },
+    {
+        "name": "is_power_of_two",
+        "bytes": bytes.fromhex("48 85 ff 0f 9f c2 48 8d 47 ff 48 85 c7 0f 94 c0 21 d0 0f b6 c0 c3"),
+        "doc": "Branchless test if 64-bit integer is a positive power of two."
     }
 ]
 
@@ -330,7 +370,58 @@ mod tests {
         // (0x120 >> 4) | (0x0F << 60)
         assert_eq!(shrd_step(0x120, 0x0F), 0xF000000000000012);
     }
+
+    #[test]
+    fn test_adc_chain() {
+        assert_eq!(adc_chain(10, 20, 30, 40), (40, 60));
+        assert_eq!(adc_chain(u64::MAX, 1, 1, 0), (0, 2));
+    }
+
+    #[test]
+    fn test_sbb_chain() {
+        assert_eq!(sbb_chain(50, 60, 20, 10), (30, 50));
+        assert_eq!(sbb_chain(0, 10, 1, 0), (u64::MAX, 9));
+    }
+
+    #[test]
+    fn test_mul64_full() {
+        assert_eq!(mul64_full(2, 3), (6, 0));
+        assert_eq!(mul64_full(0x100000000, 0x100000000), (0, 1));
+    }
+
+    #[test]
+    fn test_mul_high64() {
+        assert_eq!(mul_high64(0x100000000, 0x100000000), 1);
+        assert_eq!(mul_high64(2, 3), 0);
+    }
+
+    #[test]
+    fn test_branchless_signum() {
+        assert_eq!(branchless_signum(42), 1);
+        assert_eq!(branchless_signum(0), 0);
+        assert_eq!(branchless_signum(-99), -1);
+    }
+
+    #[test]
+    fn test_branchless_midpoint() {
+        assert_eq!(branchless_midpoint(10, 20), 15);
+        assert_eq!(branchless_midpoint(u64::MAX, u64::MAX), u64::MAX);
+    }
+
+    #[test]
+    fn test_bit_select() {
+        assert_eq!(bit_select(0xAAAAAAAA, 0x55555555, 0xFF00FF00), 0xAA55AA55);
+    }
+
+    #[test]
+    fn test_is_power_of_two() {
+        assert_eq!(is_power_of_two(1), 1);
+        assert_eq!(is_power_of_two(16), 1);
+        assert_eq!(is_power_of_two(18), 0);
+        assert_eq!(is_power_of_two(0), 0);
+    }
 }
+
 """
     full_lib_rs += unit_tests
 

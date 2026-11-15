@@ -161,9 +161,9 @@ pub fn clamp_val(val: i64, min_val: i64, max_val: i64) -> i64 {
 /// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
 pub fn unsigned_divide(mut a: u64, mut b: u64) -> u64 {
     let mut rax: u64 = 0;
+    let mut c: u64 = 0;
     let mut _div_q_2: u64 = 0;
     let mut _div_r_2: u64 = 0;
-    let mut c: u64 = 0;
     // mov rax, rdi
     rax = a;
     // xor rdx, rdx
@@ -181,9 +181,9 @@ pub fn unsigned_divide(mut a: u64, mut b: u64) -> u64 {
 /// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
 pub fn signed_divide(mut a: i64, mut b: i64) -> i64 {
     let mut rax: i64 = 0;
+    let mut c: i64 = 0;
     let mut _idiv_q_2: i64 = 0;
     let mut _idiv_r_2: i64 = 0;
-    let mut c: i64 = 0;
     // mov rax, rdi
     rax = a;
     // cqo 
@@ -201,9 +201,9 @@ pub fn signed_divide(mut a: i64, mut b: i64) -> i64 {
 /// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
 pub fn unsigned_modulo(mut a: u64, mut b: u64) -> u64 {
     let mut rax: u64 = 0;
+    let mut c: u64 = 0;
     let mut _div_q_2: u64 = 0;
     let mut _div_r_2: u64 = 0;
-    let mut c: u64 = 0;
     // mov rax, rdi
     rax = a;
     // xor rdx, rdx
@@ -270,6 +270,94 @@ pub fn shrd_step(mut a: u64, mut b: u64) -> u64 {
     rax = a;
     // shrd rax, rsi, 4
     rax = ((rax >> 4) | (b << (64 - 4)));
+    // ret 
+    return rax;
+}
+
+/// Formally synthesized routine `adc_chain`.
+/// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
+pub fn adc_chain(mut a: u64, mut b: u64, mut c: u64, mut d: u64) -> (u64, u64) {
+    let mut rax: u64 = 0;
+    // mov rax, rdi
+    rax = a;
+    // add rax, rdx
+    rax = (rax + c);
+    // mov rdx, rsi
+    c = b;
+    // adc rdx, rcx
+    c = ((c + d) + (((rax + c) < rax) as u64));
+    // ret 
+    return (rax, c);
+}
+
+/// Formally synthesized routine `sbb_chain`.
+/// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
+pub fn sbb_chain(mut a: u64, mut b: u64, mut c: u64, mut d: u64) -> (u64, u64) {
+    let mut rax: u64 = 0;
+    // mov rax, rdi
+    rax = a;
+    // sub rax, rdx
+    rax = (rax - c);
+    // mov rdx, rsi
+    c = b;
+    // sbb rdx, rcx
+    c = ((c - d) - ((rax < c) as u64));
+    // ret 
+    return (rax, c);
+}
+
+/// Formally synthesized routine `mul64_full`.
+/// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
+pub fn mul64_full(mut a: u64, mut b: u64) -> (u64, u64) {
+    let mut rax: u64 = 0;
+    let mut c: u64 = 0;
+    let mut _prod_1: u128 = 0;
+    // mov rax, rdi
+    rax = a;
+    // mul rsi
+    _prod_1 = (((rax & 0xFFFFFFFFFFFFFFFF) as u128) * ((b & 0xFFFFFFFFFFFFFFFF) as u128));
+    rax = (_prod_1 as u64);
+    c = ((_prod_1 >> 64) as u64);
+    // ret 
+    return (rax, c);
+}
+
+/// Computes high 64 bits of 64x64 unsigned multiplication via 128-bit arithmetic.
+pub fn mul_high64(a: u64, b: u64) -> u64 {
+    return ((((a as u128) * (b as u128)) >> 64) as u64);
+}
+
+/// Branchless signum computation (-1, 0, or 1) using `x.signum()`.
+pub fn branchless_signum(x: i64) -> i64 {
+    return x.signum();
+}
+
+/// Branchless overflow-free midpoint: `(a & b) + ((a ^ b) >> 1)`.
+pub fn branchless_midpoint(a: u64, b: u64) -> u64 {
+    return ((a & b) + ((a ^ b) >> 1));
+}
+
+/// Branchless bitwise multiplexer selection: `(mask & a) | ((!mask) & b)`.
+pub fn bit_select(mask: u64, a: u64, b: u64) -> u64 {
+    return ((mask & a) | ((!mask) & b));
+}
+
+/// Formally synthesized routine `is_power_of_two`.
+/// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
+pub fn is_power_of_two(mut a: u64, mut c: u64) -> u64 {
+    let mut rax: u64 = 0;
+    // test rdi, rdi
+    // setg dl
+    c = ((((c >> 8) & 0xFFFFFFFFFFFFFF) << 8) | (if (((a & a) as i64) > (0 as i64)) { 1 } else { 0 }));
+    // lea rax, [rdi - 1]
+    rax = (a - 1);
+    // test rdi, rax
+    // sete al
+    rax = ((((rax >> 8) & 0xFFFFFFFFFFFFFF) << 8) | (if ((a & rax) == 0) { 1 } else { 0 }));
+    // and eax, edx
+    rax = (((rax & 0xFFFFFFFF) & (c & 0xFFFFFFFF)) & 0xFFFFFFFF);
+    // movzx eax, al
+    rax = (((rax & 255) & 255) & 0xFFFFFFFF);
     // ret 
     return rax;
 }
@@ -397,4 +485,55 @@ mod tests {
         // (0x120 >> 4) | (0x0F << 60)
         assert_eq!(shrd_step(0x120, 0x0F), 0xF000000000000012);
     }
+
+    #[test]
+    fn test_adc_chain() {
+        assert_eq!(adc_chain(10, 20, 30, 40), (40, 60));
+        assert_eq!(adc_chain(u64::MAX, 1, 1, 0), (0, 2));
+    }
+
+    #[test]
+    fn test_sbb_chain() {
+        assert_eq!(sbb_chain(50, 60, 20, 10), (30, 50));
+        assert_eq!(sbb_chain(0, 10, 1, 0), (u64::MAX, 9));
+    }
+
+    #[test]
+    fn test_mul64_full() {
+        assert_eq!(mul64_full(2, 3), (6, 0));
+        assert_eq!(mul64_full(0x100000000, 0x100000000), (0, 1));
+    }
+
+    #[test]
+    fn test_mul_high64() {
+        assert_eq!(mul_high64(0x100000000, 0x100000000), 1);
+        assert_eq!(mul_high64(2, 3), 0);
+    }
+
+    #[test]
+    fn test_branchless_signum() {
+        assert_eq!(branchless_signum(42), 1);
+        assert_eq!(branchless_signum(0), 0);
+        assert_eq!(branchless_signum(-99), -1);
+    }
+
+    #[test]
+    fn test_branchless_midpoint() {
+        assert_eq!(branchless_midpoint(10, 20), 15);
+        assert_eq!(branchless_midpoint(u64::MAX, u64::MAX), u64::MAX);
+    }
+
+    #[test]
+    fn test_bit_select() {
+        assert_eq!(bit_select(0xAAAAAAAA, 0x55555555, 0xFF00FF00), 0xAA55AA55);
+    }
+
+    #[test]
+    fn test_is_power_of_two() {
+        assert_eq!(is_power_of_two(1), 1);
+        assert_eq!(is_power_of_two(16), 1);
+        assert_eq!(is_power_of_two(18), 0);
+        assert_eq!(is_power_of_two(0), 0);
+    }
 }
+

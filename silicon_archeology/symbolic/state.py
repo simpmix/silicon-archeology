@@ -41,17 +41,17 @@ class SymbolicState:
     def read_reg(self, name: str) -> z3.BitVecRef:
         canon, offset, width = normalize_reg(name)
         if canon not in self.registers:
-            self.registers[canon] = z3.BitVec(f"{self.prefix}_{canon}", 64)
+            self.registers[canon] = z3.BitVec(f"{self.prefix}_{canon}", width)
 
         full = self.registers[canon]
-        if offset == 0 and width == 64:
+        if offset == 0 and width == full.size():
             return z3.simplify(full)
         return z3.simplify(z3.Extract(offset + width - 1, offset, full))
 
     def write_reg(self, name: str, value: z3.BitVecRef) -> None:
         canon, offset, width = normalize_reg(name)
         if canon not in self.registers:
-            self.registers[canon] = z3.BitVec(f"{self.prefix}_{canon}", 64)
+            self.registers[canon] = z3.BitVec(f"{self.prefix}_{canon}", width)
 
         # Ensure value size matches requested width
         if value.size() < width:
@@ -59,7 +59,7 @@ class SymbolicState:
         elif value.size() > width:
             value = z3.Extract(width - 1, 0, value)
 
-        if width == 64:
+        if width >= 64:
             self.registers[canon] = z3.simplify(value)
         elif width == 32:
             # x86-64 zeroes high 32 bits

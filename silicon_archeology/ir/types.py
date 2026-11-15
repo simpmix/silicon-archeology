@@ -102,13 +102,30 @@ X86_REGISTER_MAP: Dict[str, Tuple[str, int, int]] = {
     "bh": ("rbx", 8, 8),
     "ch": ("rcx", 8, 8),
     "dh": ("rdx", 8, 8),
+
+    # 128-bit SSE/AVX registers
+    **{f"xmm{i}": (f"xmm{i}", 0, 128) for i in range(16)},
+    **{f"ymm{i}": (f"ymm{i}", 0, 256) for i in range(16)},
+}
+
+# ARM64 (AArch64) register map: 64-bit x0-x30, sp, and 32-bit w0-w30
+ARM64_REGISTER_MAP: Dict[str, Tuple[str, int, int]] = {
+    **{f"x{i}": (f"x{i}", 0, 64) for i in range(31)},
+    "sp": ("sp", 0, 64),
+    "xzr": ("xzr", 0, 64),
+    **{f"w{i}": (f"x{i}", 0, 32) for i in range(31)},
+    "wzr": ("xzr", 0, 32),
 }
 
 
 def normalize_reg(name: str) -> Tuple[str, int, int]:
-    """Returns (canonical_64bit_name, offset_bits, width_bits)."""
+    """Returns (canonical_name, offset_bits, width_bits)."""
     clean = name.lower().strip()
     if clean in X86_REGISTER_MAP:
         return X86_REGISTER_MAP[clean]
+    if clean in ARM64_REGISTER_MAP:
+        return ARM64_REGISTER_MAP[clean]
+    if clean.startswith("_prod_"):
+        return (clean, 0, 128)
     # Default fallback
     return (clean, 0, 64)

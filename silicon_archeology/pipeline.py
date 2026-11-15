@@ -10,11 +10,12 @@ import os
 import z3
 
 from silicon_archeology.lifter.x86_lifter import X86Lifter
+from silicon_archeology.lifter.arm64_lifter import Arm64Lifter
 from silicon_archeology.ir.cfg import ControlFlowGraph
 from silicon_archeology.symbolic.executor import SymbolicExecutor
 from silicon_archeology.symbolic.transfer_function import TransferFunction
 from silicon_archeology.synthesizer.rust_emitter import RustEmitter
-from silicon_archeology.synthesizer.ast import RustFunction
+from silicon_archeology.synthesizer.ast import RustFunction, RustTuple
 from silicon_archeology.verifier.equivalence import EquivalenceVerifier
 from silicon_archeology.verifier.certificate import FormalCertificate
 
@@ -35,16 +36,20 @@ class PipelineResult:
 
 
 class ReSynthesisPipeline:
-    def __init__(self, mode: int = 64, timeout_ms: int = 10000):
+    def __init__(self, mode: int = 64, timeout_ms: int = 10000, arch: str = "x86_64"):
         self.mode = mode
-        self.lifter = X86Lifter(mode=mode)
+        self.arch = arch.lower()
+        if self.arch in ("arm64", "aarch64"):
+            self.lifter = Arm64Lifter()
+        else:
+            self.lifter = X86Lifter(mode=mode)
         self.verifier = EquivalenceVerifier(timeout_ms=timeout_ms)
 
     def process(
         self,
         name: str,
         code_bytes: bytes,
-        sample_tests: Optional[List[Tuple[List[int], int]]] = None,
+        sample_tests: Optional[List[Tuple[List[int], Any]]] = None,
         base_address: int = 0x1000
     ) -> PipelineResult:
         """Runs the full re-synthesis and formal verification pipeline."""
@@ -56,7 +61,7 @@ class ReSynthesisPipeline:
         tf = sym_exec.compute_transfer_function(function_name=name)
 
         # 3. Synthesize Rust code
-        emitter = RustEmitter(cfg, name=name)
+        emitter = RustEmitter(cfg, name=name, arch=self.arch)
         rust_ast = emitter.synthesize()
         rust_src = rust_ast.emit()
 
@@ -76,11 +81,12 @@ class ReSynthesisPipeline:
                 max_sym = tf.input_symbols["rdx"]
                 preconditions.append(min_sym <= max_sym if is_signed else z3.ULE(min_sym, max_sym))
 
-        if "rax" in bin_outputs and "rax" in rust_outputs:
+        common_outputs = [r for r in bin_outputs if r in rust_outputs]
+        if common_outputs:
             is_equiv, cert = self.verifier.verify_transfer_functions(
                 routine_name=name,
-                bin_outputs={"rax": bin_outputs["rax"]},
-                rust_outputs={"rax": rust_outputs["rax"]},
+                bin_outputs={r: bin_outputs[r] for r in common_outputs},
+                rust_outputs={r: rust_outputs[r] for r in common_outputs},
                 input_symbols=tf.input_symbols,
                 preconditions=preconditions if preconditions else None
             )
@@ -117,18 +123,27 @@ class ReSynthesisPipeline:
         self, rust_ast: RustFunction, input_symbols: Dict[str, z3.BitVecRef]
     ) -> Dict[str, z3.BitVecRef]:
         """Translates synthesized Rust function semantics into Z3 BitVec terms."""
-        # Map parameters to corresponding ABI registers
-        # Param 0 -> rdi, Param 1 -> rsi, etc.
-        abi_order = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
-        reverse_name_map = {
-            "a": "rdi", "b": "rsi", "c": "rdx",
-            "d": "rcx", "e": "r8", "f": "r9"
-        }
+        is_arm64 = self.arch in ("arm64", "aarch64")
+        if is_arm64:
+            abi_order = ["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"]
+            reverse_name_map = {
+                "a": "x0", "b": "x1", "c": "x2",
+                "d": "x3", "e": "x4", "f": "x5"
+            }
+        else:
+            abi_order = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
+            reverse_name_map = {
+                "a": "rdi", "b": "rsi", "c": "rdx",
+                "d": "rcx", "e": "r8", "f": "r9"
+            }
         local_env: Dict[str, z3.BitVecRef] = {}
+
+        clean_names = [p.name.replace("mut ", "").strip() for p in rust_ast.params]
+        is_standard_letter_params = all(n in ("a", "b", "c", "d", "e", "f") for n in clean_names) and clean_names == sorted(clean_names)
 
         for idx, param in enumerate(rust_ast.params):
             clean_name = param.name.replace("mut ", "").strip()
-            if clean_name in reverse_name_map:
+            if is_standard_letter_params and clean_name in reverse_name_map:
                 reg_name = reverse_name_map[clean_name]
             else:
                 reg_name = abi_order[idx] if idx < len(abi_order) else f"arg_{idx}"
@@ -137,20 +152,32 @@ class ReSynthesisPipeline:
 
         self._current_fn_is_signed = rust_ast.return_type.startswith("i")
 
-        # Simple symbolic interpreter over synthesized Rust body statements
-        rax_out = self._eval_rust_stmts(rust_ast.body, local_env)
-        return {"rax": rax_out}
+        res = self._eval_rust_stmts(rust_ast.body, local_env)
+        if isinstance(res, dict):
+            return res
+        ret_reg = "x0" if is_arm64 else "rax"
+        return {ret_reg: res}
 
     def _eval_rust_stmts(
         self, stmts: List[Any], env: Dict[str, z3.BitVecRef]
-    ) -> z3.BitVecRef:
+    ) -> Any:
         from silicon_archeology.synthesizer.ast import (
-            RustReturn, RustAssignStmt, RustIfStmt, RustWhile, RustLet
+            RustReturn, RustAssignStmt, RustIfStmt, RustWhile, RustLet, RustTuple
         )
 
         for stmt in stmts:
             if isinstance(stmt, RustReturn):
                 if stmt.expr:
+                    if isinstance(stmt.expr, RustTuple):
+                        is_arm64 = getattr(self, "arch", "x86_64") in ("arm64", "aarch64")
+                        r1 = "x0" if is_arm64 else "rax"
+                        r2 = "x1" if is_arm64 else "rdx"
+                        res_dict = {}
+                        if len(stmt.expr.elements) >= 1:
+                            res_dict[r1] = self._eval_rust_expr(stmt.expr.elements[0], env)
+                        if len(stmt.expr.elements) >= 2:
+                            res_dict[r2] = self._eval_rust_expr(stmt.expr.elements[1], env)
+                        return res_dict
                     return self._eval_rust_expr(stmt.expr, env)
                 return z3.BitVecVal(0, 64)
             elif isinstance(stmt, RustAssignStmt):
@@ -175,7 +202,9 @@ class ReSynthesisPipeline:
                         if k in body_env:
                             env[k] = z3.If(cond, body_env[k], env[k])
 
-        return env.get("rax", z3.BitVecVal(0, 64))
+        is_arm64 = getattr(self, "arch", "x86_64") in ("arm64", "aarch64")
+        ret_reg = "x0" if is_arm64 else "rax"
+        return env.get(ret_reg, z3.BitVecVal(0, 64))
 
     def _eval_rust_cond(self, expr: Any, env: Dict[str, z3.BitVecRef]) -> z3.BoolRef:
         from silicon_archeology.synthesizer.ast import RustBinaryOp, RustUnaryOp, RustLiteral
@@ -189,7 +218,12 @@ class ReSynthesisPipeline:
                     l = z3.ZeroExt(target_sz - l.size(), l)
                 if r.size() < target_sz:
                     r = z3.ZeroExt(target_sz - r.size(), r)
+            from silicon_archeology.synthesizer.ast import RustCast
             is_signed = getattr(self, "_current_fn_is_signed", False)
+            if isinstance(expr.left, RustCast) and expr.left.target_type.startswith("i"):
+                is_signed = True
+            elif isinstance(expr.right, RustCast) and expr.right.target_type.startswith("i"):
+                is_signed = True
             if expr.op == "==":
                 return l == r
             elif expr.op == "!=":
@@ -224,11 +258,15 @@ class ReSynthesisPipeline:
             target = expr.target_type
             if target in ("u32", "i32"):
                 return z3.Extract(31, 0, val)
+            elif target == "u128":
+                return z3.ZeroExt(128 - val.size(), val) if val.size() < 128 else val
             elif target in ("u64", "i64"):
                 if val.size() < 64:
                     if target == "i64":
                         return z3.SignExt(64 - val.size(), val)
                     return z3.ZeroExt(64 - val.size(), val)
+                elif val.size() > 64:
+                    return z3.Extract(63, 0, val)
                 return val
             return val
 
@@ -279,6 +317,11 @@ class ReSynthesisPipeline:
             rec = self._eval_rust_expr(expr.receiver, env)
             if expr.method == "wrapping_neg":
                 return -rec
+            elif expr.method == "signum":
+                return z3.If(rec > 0, z3.BitVecVal(1, 64), z3.If(rec < 0, z3.BitVecVal(-1, 64), z3.BitVecVal(0, 64)))
+            elif expr.method == "is_power_of_two":
+                cond = z3.And(rec > 0, (rec & (rec - 1)) == 0)
+                return z3.If(cond, z3.BitVecVal(1, 64), z3.BitVecVal(0, 64))
             elif expr.method == "wrapping_abs":
                 return z3.If(rec < 0, -rec, rec)
             elif expr.method == "wrapping_sub":
@@ -395,7 +438,11 @@ class ReSynthesisPipeline:
                     else:
                         formatted_args.append(f"{a}u64" if not str(a).endswith("u64") else str(a))
                 args_str = ", ".join(formatted_args)
-                exp_str = f"{expected}i64" if is_signed_ret else f"{expected}u64"
+                if isinstance(expected, (tuple, list)):
+                    exp_elems = [f"{e}u64" if not str(e).endswith("u64") else str(e) for e in expected]
+                    exp_str = f"({', '.join(exp_elems)})"
+                else:
+                    exp_str = f"{expected}i64" if is_signed_ret else f"{expected}u64"
                 test_main_lines.append(
                     f"    let res = {routine_name}({args_str});"
                 )

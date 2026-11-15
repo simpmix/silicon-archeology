@@ -117,6 +117,15 @@ class RustIndex(RustExpr):
         return f"{self.base.emit(indent)}[{self.index.emit(indent)}]"
 
 
+@dataclass
+class RustTuple(RustExpr):
+    elements: List[RustExpr] = field(default_factory=list)
+
+    def emit(self, indent: int = 0) -> str:
+        elems = ", ".join(e.emit(indent) for e in self.elements)
+        return f"({elems})"
+
+
 # --- Statements ---
 
 class RustStmt(RustASTNode):

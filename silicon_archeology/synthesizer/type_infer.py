@@ -25,8 +25,11 @@ class TypeInference:
         written: Set[str] = set()
         read_order: List[str] = []
 
-        # Known standard parameter registers across System V and Windows x64
-        candidate_params = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
+        # Known standard parameter registers across System V, Windows x64, and ARM64
+        candidate_params = [
+            "rdi", "rsi", "rdx", "rcx", "r8", "r9",
+            "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"
+        ]
 
         for label in self.cfg.reverse_post_order():
             bb = self.cfg.blocks.get(label)
@@ -85,6 +88,9 @@ class TypeInference:
         all_vars = set(read_order) | written | self.signed_regs | self.width_32_regs
         type_map: Dict[str, str] = {}
         for reg in all_vars:
+            if reg.startswith("_prod_"):
+                type_map[reg] = "u128"
+                continue
             is_signed = reg in self.signed_regs
             is_32 = reg in self.width_32_regs
             if is_signed:

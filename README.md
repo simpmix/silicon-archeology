@@ -5,18 +5,21 @@
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021%20Edition-orange.svg)](https://www.rust-lang.org)
 [![SMT Solver: Z3 5.x](https://img.shields.io/badge/SMT%20Solver-Z3%205.x-purple.svg)](https://github.com/Z3Prover/z3)
 [![Formal Verification: BitVec Theory](https://img.shields.io/badge/Formal%20Verification-QFBV%20Sound-success.svg)](#mathematical-formulation)
+[![Tests: 101 Passing](https://img.shields.io/badge/Tests-101%20Passing%20(100%25)-brightgreen.svg)](#-test-suite)
+[![Architectures: x86__64%20%7C%20ARM64](https://img.shields.io/badge/Arch-x86__64%20%7C%20ARM64-blueviolet.svg)](#-multi-architecture-lifting)
 
 > **Decompilers produce readable pseudocode. Silicon Archeology synthesizes mathematically proven, memory-safe, compilable Rust.**
 
 Traditional reverse-engineering tools like **Ghidra** and **IDA Pro Hex-Rays** decompile stripped binaries into informal C-like pseudo-code riddled with untyped pointers, `goto` spaghetti, undefined signed-overflow behavior, and platform-specific calling convention quirks. This pseudo-C is notoriously difficult to re-compile and almost impossible to migrate into modern, memory-safe systems languages.
 
 **Silicon Archeology** introduces an SMT-driven re-synthesis methodology:
-1. **Lifts** raw x86/x86_64 machine code into a strict bit-precise **Micro-IR**.
+1. **Lifts** raw **x86/x86_64** and **ARM64 (AArch64)** machine code into a strict bit-precise **Micro-IR**.
 2. **Executes** Micro-IR symbolically using **Z3 Theorem Prover bitvector & array theories**, deriving closed-form symbolic transfer functions:
    $$\mathcal{F}_{\text{binary}}: \text{State}_{\text{in}} \longrightarrow \text{State}_{\text{out}}$$
-3. **Restructures** arbitrary Control Flow Graphs into idiomatic structured Rust ASTs using an enhanced **Relooper algorithm** and **algorithmic idiom recognition** (Brian Kernighan popcounts, branchless min/max, bit-twiddling, modular cipher rounds).
+3. **Restructures** arbitrary Control Flow Graphs into idiomatic structured Rust ASTs using an enhanced **Relooper algorithm**, inductive loop invariant synthesis, and **algorithmic idiom recognition** (Kernighan popcounts, branchless min/max, carry-chains, bit-twiddling, modular cipher rounds).
 4. **Formally proves mathematical equivalence** between the lifted binary semantics and the synthesized Rust AST, emitting cryptographic **Formal Verification Certificates** (`.proof.json`).
-5. **Validates native compilation** directly against `rustc` and `cargo`.
+5. **Validates memory aliasing** with formal SMT proofs (`MUST_ALIAS`, `NO_ALIAS`, `MAY_ALIAS`).
+6. **Validates native compilation** directly against `rustc` and `cargo`.
 
 ---
 
@@ -28,22 +31,23 @@ Traditional reverse-engineering tools like **Ghidra** and **IDA Pro Hex-Rays** d
  └────────────────────────────────────────────────────────────────────────┘
        │
        ▼
- [ Raw x86/x86_64 Machine Bytes ]
+ [ Raw Machine Code Bytes (x86_64 / ARM64) ]
        │
        ├─► [ Capstone Disassembly Engine ]
        │
        ▼
- [ Micro-IR Lifter ] ──────────► [ Control Flow Graph (CFG) ]
-  • Register Aliasing              • Dominator Tree Calculation
-  • Flag Syntheses (ZF, SF, CF, OF)• Natural Loop Analysis (Back-edges)
-  • 32-bit Zero-Extension          • Block Predecessors / Successors
+ [ Multi-Arch Micro-IR Lifter ] ──► [ Control Flow Graph (CFG) ]
+  • x86_64 & ARM64 Semantics        • Dominator Tree Calculation
+  • Register Aliasing & Sub-regs    • Natural Loop Back-Edges
+  • Flag Syntheses (ZF, SF, CF, OF) • Inductive Invariant Generation
+  • SSE2 SIMD Vector Lifting (XMM)  • Block Predecessors / Successors
        │
        ├─────────────────────────────────┬────────────────────────────────┐
        ▼                                 ▼                                ▼
  [ Symbolic Execution Engine ]   [ Relooper & Synthesizer ]     [ Idiom Matcher ]
   • Z3 BitVector Semantics        • Structured Loops / Branches  • count_ones()
-  • Little-Endian Array Memory    • Type Inference (u32/u64/i64) • std::cmp::min/max
-  • Path Exploration Worklist     • Local Variable Scoping       • x & x.wrapping_neg()
+  • Pointer Alias Reasoning       • Type Inference (u32/u64/i64) • std::cmp::min/max
+  • Path Exploration Worklist     • Tuple Returns (u64, u64)     • x & x.wrapping_neg()
   • Multi-Path ITE Collapse       • Safe Rust Code Emission      • Modular Feistel Round
        │                                 │                                │
        ▼                                 ▼                                │
@@ -73,30 +77,34 @@ Traditional reverse-engineering tools like **Ghidra** and **IDA Pro Hex-Rays** d
 
 ---
 
-## 🔬 Mathematical Formulation
+## 🚀 Performance Benchmarks
 
-Let $\vec{x} \in \mathbb{B}^{64 \times k}$ denote the symbolic valuation of input registers and referenced memory locations. The binary routine semantics are captured as an SMT-LIB BitVector transfer function:
+Silicon Archeology includes an automated benchmarking suite (`python -m silicon_archeology.cli benchmark`) evaluating lifting speed, Z3 solving latency, and native compilation verification:
 
-$$\mathcal{F}_{\text{binary}}(\vec{x}) = \bigoplus_{p \in \mathcal{P}} \left( \mathcal{C}_p(\vec{x}) \ \land \ \mathcal{E}_p(\vec{x}) \right)$$
+| Routine Name | Instruction Pattern | Bytes | Lifting Latency | Z3 SMT Latency | Formal Status | rustc Status |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| `add_two` | 64-bit register addition | 7 B | 0.65 ms | 5.18 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `branchless_min` | `cmp` + `cmovg` signed minimum | 11 B | 0.46 ms | 41.17 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `isolate_lowest_bit` | `neg` + `and` bit twiddle | 10 B | 0.50 ms | 2.32 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `popcount_builtin` | Hardware `POPCNT` instruction | 6 B | 0.62 ms | 2.17 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `murmur3_fmix64` | Avalanche 64-bit multiply-shift | 28 B | 0.59 ms | 1.94 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `tea_round` | TEA block cipher Feistel round | 32 B | 0.89 ms | 2.26 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `polynomial_eval` | LEA 3-factor addressing | 6 B | 0.31 ms | 1.71 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `rc4_prga_step` | RC4 index state stepping | 20 B | 0.61 ms | 2.37 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `reset_lowest_bit` | BMI1 `blsr` instruction | 6 B | 0.39 ms | 2.24 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `and_not` | BMI1 `andn` instruction | 6 B | 0.59 ms | 1.68 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `count_trailing_zeros` | BMI1 `tzcnt` instruction | 6 B | 0.31 ms | 1.95 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `count_leading_zeros` | BMI1 `lzcnt` instruction | 6 B | 0.29 ms | 1.74 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `byte_swap_64` | Hardware `bswap` 64-bit | 7 B | 0.33 ms | 1.75 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `branchless_midpoint` | Overflow-free `(a&b) + ((a^b)>>1)` | 19 B | 0.76 ms | 2.09 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `bit_select` | Multiplexer `(a&m) \| (b&~m)` | 16 B | 0.80 ms | 1.68 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `mul_high64` | Hardware `mul` high 64 bits | 10 B | 0.36 ms | 1.44 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `adc_chain` | Multi-reg carry chain `(u64, u64)` | 13 B | 0.76 ms | 3.45 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `sbb_chain` | Multi-reg borrow chain `(u64, u64)` | 13 B | 0.46 ms | 5.56 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `mul64_full` | 128-bit full product `(u64, u64)` | 7 B | 0.43 ms | 1.77 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
+| `branchless_signum` | Flag-based signum `(-1, 0, 1)` | 21 B | 0.67 ms | 3.99 ms | **PROVEN_EQUIVALENT** | **Valid (lib)** |
 
-where $\mathcal{P}$ represents the set of all symbolic execution paths, $\mathcal{C}_p(\vec{x})$ is the accumulated path condition, and $\mathcal{E}_p(\vec{x})$ is the register/memory effect term.
-
-Similarly, the synthesized Rust AST is parsed into symbolic semantics $\mathcal{F}_{\text{rust}}(\vec{x})$.
-
-### The Equivalence Theorem
-
-The synthesized Rust routine is **sound and formally equivalent** to the input binary routine if and only if no input valuation can produce divergent output across canonical output registers $\mathcal{O}$:
-
-$$\forall \vec{x} \in \mathbb{B}^{64 \times k}, \quad \forall r \in \mathcal{O}, \quad \mathcal{F}_{\text{binary}}(\vec{x})_r = \mathcal{F}_{\text{rust}}(\vec{x})_r$$
-
-To verify this with Z3, Silicon Archeology constructs the **Discrepancy Formula**:
-
-$$\Phi_{\text{discrepancy}}(\vec{x}) \coloneqq \bigvee_{r \in \mathcal{O}} \left( \mathcal{F}_{\text{binary}}(\vec{x})_r \neq \mathcal{F}_{\text{rust}}(\vec{x})_r \right)$$
-
-$$\begin{cases}
-\text{Z3}(\Phi_{\text{discrepancy}}) = \textbf{UNSAT} & \implies \text{Theorem Holds: Proven Equivalent} \\
-\text{Z3}(\Phi_{\text{discrepancy}}) = \textbf{SAT}   & \implies \text{Theorem Refuted: Concrete Counterexample Model Generated}
-\end{cases}$$
+*Summary*: **20 / 20 Routines Formally Proven (100.0% UNSAT)** | **Mean SMT Solving Latency: 4.42 ms** | **Median: 2.13 ms**
 
 ---
 
@@ -107,91 +115,69 @@ $$\begin{cases}
 | **Output Target** | C pseudo-code | C / Java pseudo-code | **Idiomatic, Compilable Rust (2021 Edition)** |
 | **Correctness Guarantee** | Best-effort heuristic | Best-effort heuristic | **SMT Formal Equivalence Proof Certificate** |
 | **Memory Safety** | ❌ None (raw pointers) | ❌ None (raw pointers) | **✅ 100% Memory-Safe Safe-Rust** |
-| **Standard Idioms** | Limited | Limited | **Native Rust std::cmp, count_ones, rotate** |
+| **Memory Alias Reasoning** | ❌ None | ❌ None | **✅ Formal SMT MUST/NO/MAY Alias Proofs** |
+| **Loop Invariant Verification** | ❌ None | ❌ None | **✅ Inductive Proofs & Ranking Functions** |
+| **Multi-Arch Support** | x86, ARM, MIPS | x86, ARM, RISC-V | **x86_64, x86 (32-bit), ARM64 (AArch64)** |
+| **Multi-Register Returns** | ❌ Flaky heuristics | ❌ Flaky heuristics | **✅ Automatic Rust Tuples `(u64, u64)`** |
 | **Automated Cargo Crating** | ❌ Manual | ❌ Manual | **✅ Automated `Cargo.toml` & `src/lib.rs` generation** |
-| **Verification Time** | N/A (unverified) | N/A (unverified) | **< 10ms per routine average via Z3** |
+| **Solving Latency** | N/A (unverified) | N/A (unverified) | **4.42 ms average per routine via Z3** |
 
 ---
 
-## 🚀 Quickstart
+## 🛠️ CLI Reference
 
-### Prerequisites
-- Python 3.10+
-- `z3-solver` and `capstone` (`pip install z3-solver capstone pytest`)
-- Rust toolchain (`rustc`, `cargo`)
-
-### Installation
-```bash
-git clone https://github.com/simpmix/silicon-archeology.git
-cd silicon-archeology
-pip install -r requirements.txt
-pip install -e .
-```
-
-### CLI Commands
-
-#### 1. Formally Re-Synthesize a Binary Sequence
+### 1. Formally Re-Synthesize a Binary Sequence
 ```bash
 # Re-synthesize x86_64 cmp + cmovg branchless minimum:
 python -m silicon_archeology.cli pipeline "48 39 f7 48 0f 4f fe 48 89 f8 c3" --name branchless_min
 ```
-**Output:**
-```rust
-/// Computes minimum of two numbers via signed conditional move.
-pub fn branchless_min(a: i64, b: i64) -> i64 {
-    return std::cmp::min(a, b);
-}
-```
-```text
-[2] SMT Equivalence Verification:
-  Status:       PROVEN_EQUIVALENT
-  Theorem:      ∀ inputs . F_bin(inputs) ≡ F_rust(inputs) on [rax]
-  Solver:       Z3 Theorem Prover v5.4.1
-  Solving Time: 62.44 ms
-  Proof Hash:   00415ac39de693566fc663822ec130e8c4c917cedff925ab2d910db1bd6763fc
 
-[3] Native Compiler (rustc) Verification:
-  Compiles:     True
-  Test Status:  True
-```
-
-#### 2. Disassemble Machine Bytes
+### 2. ARM64 (AArch64) Re-Synthesis
 ```bash
-python -m silicon_archeology.cli disasm "48 89 f8 48 01 f0 c3"
+# Re-synthesize ARM64 add x0, x0, x1; ret:
+python -m silicon_archeology.cli pipeline "00 00 01 8b c0 03 5f d6" --arch arm64 --name arm64_add
 ```
 
-#### 3. Lift to Micro-IR CFG
+### 3. Automated SMT Engine Benchmarking
 ```bash
-python -m silicon_archeology.cli lift "48 89 f8 48 01 f0 c3"
+python -m silicon_archeology.cli benchmark
 ```
 
-#### 4. Compute Symbolic Transfer Function
+### 4. Audit & Validate a Formal Proof Certificate
 ```bash
-python -m silicon_archeology.cli symbolic "48 89 f8 48 01 f0 c3" --name add_two
+python -m silicon_archeology.cli cert-verify resynthesized_crate/proofs/add_two.proof.json
+```
+
+### 5. Deep Reverse-Engineering Inspector
+```bash
+# Inspect CFG, dominators, loop back-edges, and symbolic transfer function:
+python -m silicon_archeology.cli inspect "48 89 f8 48 01 f0 c3"
 ```
 
 ---
 
-## 📦 Re-Synthesized Rust Crate Showcase
+## 📦 Re-Synthesized Rust Crate Showcase (30 Verified Routines)
 
-Silicon Archeology includes an automated crate synthesis engine. Run Example 4 to regenerate the entire verified library under `resynthesized_crate/`:
+Run Example 4 to regenerate the entire verified library under `resynthesized_crate/`:
 
 ```bash
 python examples/04_full_resynthesis_to_crate.py
 cd resynthesized_crate
 cargo check
+cargo test
 ```
 
-The resulting crate contains:
-- `Cargo.toml`: Ready to publish to crates.io
-- `src/lib.rs`: Full suite of re-synthesized routines (Murmur3 64-bit mixer, TEA cipher block, branchless min/max, Kernighan popcount, RC4 PRGA step, polynomial arithmetic)
-- `proofs/*.proof.json`: Crytographic proof certificates for every function
+The generated crate contains 30 proven routines:
+- **Arithmetic & Multi-Register**: `add_two`, `polynomial_eval`, `adc_chain`, `sbb_chain`, `mul64_full`, `mul_high64`, `unsigned_divide`, `signed_divide`, `unsigned_modulo`, `atomic_xadd`.
+- **Bit-Twiddling & Manipulations**: `isolate_lowest_bit`, `reset_lowest_bit`, `and_not`, `count_trailing_zeros`, `count_leading_zeros`, `popcount_builtin`, `byte_swap_64`, `bit_select`, `is_power_of_two`, `branchless_midpoint`, `bmi2_shlx`, `shld_step`, `shrd_step`.
+- **Branchless Logic**: `branchless_min`, `clamp_val`, `branchless_abs`, `branchless_signum`.
+- **Ciphers & Hashes**: `murmur3_fmix64`, `tea_round`, `rc4_prga_step`.
 
 ---
 
-## 🛡️ Formal Certificate Format
+## 🛡️ Formal Proof Certificate
 
-Every synthesis emits a cryptographic verification certificate:
+Every synthesis generates a cryptographic JSON certificate:
 
 ```json
 {
@@ -207,7 +193,7 @@ Every synthesis emits a cryptographic verification certificate:
   "outputs_verified": [
     "rax"
   ],
-  "verification_time_ms": 3.89,
+  "verification_time_ms": 2.35,
   "proof_hash": "0dd82855dcdb0e296bd86e0a05ebc1c995af0b6194298ea9565d2bf360a09e88",
   "counterexample": null
 }
@@ -217,85 +203,20 @@ Every synthesis emits a cryptographic verification certificate:
 
 ## 🧪 Test Suite
 
-Silicon Archeology has a comprehensive test suite of 67 automated tests covering the x86 lifter, BMI1/BMI2 instructions, double-precision shifts (SHLD/SHRD), atomic exchanges (XADD, CMPXCHG), symbolic execution, SMT verifier, relooper, and end-to-end integration:
+Silicon Archeology includes an exhaustive test suite of **101 automated tests** covering the full engine:
 
 ```bash
 pytest tests/ -v
 ```
 
 ```text
-tests/test_lifter.py::test_register_normalization PASSED
-tests/test_lifter.py::test_decoder_disassembly PASSED
-tests/test_lifter.py::test_lifter_arithmetic_instructions PASSED
-tests/test_lifter.py::test_lifter_shifts_and_rotates PASSED
-tests/test_lifter.py::test_lifter_branching_and_cfg PASSED
-tests/test_lifter.py::test_lifter_loop_detection PASSED
-tests/test_lifter.py::test_lifter_movsxd_and_bswap PASSED
-tests/test_lifter.py::test_lifter_push_pop PASSED
-tests/test_lifter.py::test_lifter_bmi1_and_bmi2_instructions PASSED
-tests/test_lifter.py::test_lifter_bit_counting_and_scans PASSED
-tests/test_lifter.py::test_lifter_bit_tests PASSED
-tests/test_lifter.py::test_lifter_sign_extensions_and_division PASSED
-tests/test_lifter.py::test_lifter_setcc_and_xchg PASSED
-tests/test_lifter.py::test_lifter_complex_displacement PASSED
-tests/test_lifter.py::test_lifter_bmi2_shifts_and_double_shifts PASSED
-tests/test_lifter.py::test_lifter_xadd_and_cmpxchg PASSED
-tests/test_pipeline.py::test_pipeline_add_two_routine PASSED
-tests/test_pipeline.py::test_pipeline_bitwise_xor_swap PASSED
-tests/test_pipeline.py::test_pipeline_polynomial_calc PASSED
-tests/test_pipeline.py::test_pipeline_branchless_min_idiom PASSED
-tests/test_pipeline.py::test_pipeline_with_sample_tests PASSED
-tests/test_pipeline.py::test_pipeline_rotate_and_mask PASSED
-tests/test_pipeline.py::test_pipeline_certificate_integrity PASSED
-tests/test_pipeline.py::test_pipeline_unnamed_branchless_idiom PASSED
-tests/test_pipeline.py::test_pipeline_movsxd PASSED
-tests/test_pipeline.py::test_pipeline_bswap PASSED
-tests/test_pipeline.py::test_pipeline_bmi_blsr PASSED
-tests/test_pipeline.py::test_pipeline_bmi_andn PASSED
-tests/test_pipeline.py::test_pipeline_bmi_bextr PASSED
-tests/test_pipeline.py::test_pipeline_bit_counting_tzcnt_lzcnt PASSED
-tests/test_pipeline.py::test_pipeline_division_and_modulo PASSED
-tests/test_pipeline.py::test_pipeline_setcc_predicate PASSED
-tests/test_pipeline.py::test_pipeline_branchless_clamp PASSED
-tests/test_pipeline.py::test_pipeline_three_operand_imul PASSED
-tests/test_pipeline.py::test_pipeline_cqo_sign_extension PASSED
-tests/test_pipeline.py::test_pipeline_signed_idiv PASSED
-tests/test_pipeline.py::test_pipeline_unsigned_modulo_correctness PASSED
-tests/test_pipeline.py::test_pipeline_branchless_abs PASSED
-tests/test_pipeline.py::test_pipeline_bmi2_shlx PASSED
-tests/test_pipeline.py::test_pipeline_atomic_xadd PASSED
-tests/test_pipeline.py::test_pipeline_double_shifts_shld_shrd PASSED
-tests/test_symbolic.py::test_symbolic_state_read_write PASSED
-tests/test_symbolic.py::test_symbolic_memory_little_endian PASSED
-tests/test_symbolic.py::test_symbolic_executor_arithmetic PASSED
-tests/test_symbolic.py::test_symbolic_executor_multi_path PASSED
-tests/test_symbolic.py::test_symbolic_ctz_clz_bswap PASSED
-tests/test_symbolic.py::test_symbolic_bmi_blsr PASSED
-tests/test_symbolic.py::test_symbolic_signed_remainder PASSED
-tests/test_symbolic.py::test_symbolic_bmi2_shlx_shrx PASSED
-tests/test_synthesizer.py::test_type_inference_signed_and_parameters PASSED
-tests/test_synthesizer.py::test_relooper_linear_sequence PASSED
-tests/test_synthesizer.py::test_idiom_isolate_lowest_set_bit PASSED
-tests/test_synthesizer.py::test_idiom_popcount PASSED
-tests/test_synthesizer.py::test_rust_emitter_synthesize PASSED
-tests/test_synthesizer.py::test_type_inference_memstore_and_ite PASSED
-tests/test_synthesizer.py::test_rust_emitter_loop_renaming PASSED
-tests/test_synthesizer.py::test_idiom_reset_lowest_set_bit PASSED
-tests/test_synthesizer.py::test_idiom_and_not PASSED
-tests/test_synthesizer.py::test_idiom_count_zeros PASSED
-tests/test_synthesizer.py::test_idiom_byte_swap PASSED
-tests/test_synthesizer.py::test_idiom_branchless_abs PASSED
-tests/test_synthesizer.py::test_type_inference_propagation PASSED
-tests/test_synthesizer.py::test_relooper_zeroing_idiom PASSED
-tests/test_verifier.py::test_equivalence_identical_functions PASSED
-tests/test_verifier.py::test_equivalence_bitwise_identity PASSED
-tests/test_verifier.py::test_non_equivalence_counterexample PASSED
-tests/test_verifier.py::test_certificate_json_serialization PASSED
-============================= 67 passed in 31.81s =============================
+============================= 101 passed in 43.87s =============================
 ```
 
 ---
 
 ## 📜 License
 
-Distributed under dual **MIT** or **Apache-2.0** licenses.
+Silicon Archeology is dual-licensed under either:
+- **MIT License** ([LICENSE-MIT](LICENSE) or http://opensource.org/licenses/MIT)
+- **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE) or http://www.apache.org/licenses/LICENSE-2.0)

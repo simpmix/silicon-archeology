@@ -143,3 +143,50 @@ Certificates contain:
 - Evaluated input & output symbols
 - Elapsed verification time
 - SHA-256 proof hash binding the theorem, timestamp, and target
+
+---
+
+## 7. ARM64 (AArch64) Architecture Lifter
+
+Silicon Archeology includes a native AArch64 machine-code lifter (`Arm64Lifter`):
+- **Registers**: Full 64-bit general purpose registers `x0`-`x30`, 32-bit views `w0`-`w30`, stack pointer `sp`, and zero registers `xzr`/`wzr`.
+- **Calling Convention (AAPCS64)**: Parameters are mapped to `x0` through `x7`, with primary return in `x0` (and secondary return in `x1`).
+- **Conditional Select**: `csel`, `csinc`, `cset`, `cneg` are mapped into bit-precise `IteExpr` ternary expressions based on condition code evaluation (`eq`, `ne`, `lt`, `le`, `gt`, `ge`, `lo`, `ls`, `hi`, `hs`).
+- **Control Flow**: Translates unconditional branches (`b`), conditional branches (`b.<cond>`), compare-and-branch (`cbz`, `cbnz`), and subroutine returns (`ret`).
+
+---
+
+## 8. SMT Pointer & Memory Alias Analysis Engine
+
+The `MemoryAliasAnalyzer` mathematically classifies the relationship between two arbitrary symbolic memory references $[A, A + S_A)$ and $[B, B + S_B)$:
+
+$$\text{Overlap}(A, S_A, B, S_B) \coloneqq (A <_u B + S_B) \ \land \ (B <_u A + S_A)$$
+
+1. **MUST_ALIAS**:
+   $$\text{Z3}(A \neq B) = \textbf{UNSAT} \implies \text{Pointers are strictly identical across all states.}$$
+2. **NO_ALIAS**:
+   $$\text{Z3}(\text{Overlap}(A, S_A, B, S_B)) = \textbf{UNSAT} \implies \text{Regions are provably disjoint across all states.}$$
+3. **MAY_ALIAS**:
+   $$\text{Z3}(\text{Overlap}(A, S_A, B, S_B)) = \textbf{SAT} \implies \text{Aliasing depends on runtime inputs; concrete counterexample extracted.}$$
+
+---
+
+## 9. Inductive Loop Invariant Synthesizer & Formal Induction Verifier
+
+For loops containing arbitrary control-flow, the `InductiveLoopVerifier` synthesizes candidate invariants and proves safety and termination via mathematical induction:
+
+1. **Base Case**: Pre-condition upon entering the loop implies the invariant:
+   $$\forall s_0 \in \text{StateSpace}, \quad \text{Pre}(s_0) \implies \text{Inv}(s_0)$$
+2. **Inductive Step**: If the invariant and loop guard hold at state $s$, then the invariant holds after one iteration:
+   $$\forall s \in \text{StateSpace}, \quad \left( \text{Inv}(s) \ \land \ \text{Guard}(s) \right) \implies \text{Inv}(\text{Step}(s))$$
+3. **Well-Founded Termination**: Verifies a strictly decreasing ranking function $V(s)$:
+   $$\forall s \in \text{StateSpace}, \quad V(s) \ge 0 \quad \land \quad V(\text{Step}(s)) < V(s)$$
+
+---
+
+## 10. Multi-Register Returns & Extended Bit-Manipulation Idioms
+
+- **Multi-Register Return Synthesis**: Detects routines modifying multiple output registers simultaneously (e.g. `rax` and `rdx` in 64x64 multiplications or carry chains), generating idiomatic Rust tuple returns `(u64, u64)`.
+- **Carry-Chain Modeling**: Preserves `__cf` across multiple addition/subtraction instructions using algebraic carry formulas $(R <_u A)$ without losing context.
+- **SSE2 SIMD Vectors**: Lifter support for 128-bit vector instructions (`pxor`, `paddd`, `psubd`, `movdqa`, `movdqu`) mapped directly to Z3 128-bit BitVectors.
+
