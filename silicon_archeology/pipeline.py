@@ -207,9 +207,13 @@ class ReSynthesisPipeline:
         return env.get(ret_reg, z3.BitVecVal(0, 64))
 
     def _eval_rust_cond(self, expr: Any, env: Dict[str, z3.BitVecRef]) -> z3.BoolRef:
-        from silicon_archeology.synthesizer.ast import RustBinaryOp, RustUnaryOp, RustLiteral
+        from silicon_archeology.synthesizer.ast import RustBinaryOp, RustUnaryOp, RustLiteral, RustMethodCall, RustIdent
 
         if isinstance(expr, RustBinaryOp):
+            if expr.op == "&&":
+                return z3.And(self._eval_rust_cond(expr.left, env), self._eval_rust_cond(expr.right, env))
+            elif expr.op == "||":
+                return z3.Or(self._eval_rust_cond(expr.left, env), self._eval_rust_cond(expr.right, env))
             l = self._eval_rust_expr(expr.left, env)
             r = self._eval_rust_expr(expr.right, env)
             if l.size() != r.size():
@@ -238,6 +242,13 @@ class ReSynthesisPipeline:
                 return l >= r if is_signed else z3.UGE(l, r)
         elif isinstance(expr, RustUnaryOp) and expr.op == "!":
             return z3.Not(self._eval_rust_cond(expr.operand, env))
+        elif isinstance(expr, RustMethodCall):
+            if expr.method == "is_power_of_two":
+                rec = self._eval_rust_expr(expr.receiver, env)
+                return z3.And(rec > 0, (rec & (rec - 1)) == 0)
+        elif isinstance(expr, RustIdent):
+            if expr.name in env:
+                return env[expr.name] != 0
         return z3.BoolVal(True)
 
     def _eval_rust_expr(self, expr: Any, env: Dict[str, z3.BitVecRef]) -> z3.BitVecRef:

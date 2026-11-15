@@ -63,12 +63,31 @@ BENCHMARK_ROUTINES = [
 ]
 
 
+ARM64_BENCHMARK_ROUTINES = [
+    ("arm64_add", bytes.fromhex("00 00 01 8b c0 03 5f d6")),
+    ("arm64_sub", bytes.fromhex("00 00 01 cb c0 03 5f d6")),
+    ("arm64_eor", bytes.fromhex("00 00 01 ca c0 03 5f d6")),
+    ("arm64_mul", bytes.fromhex("00 7c 01 9b c0 03 5f d6")),
+    ("arm64_bic", bytes.fromhex("00 00 21 8a c0 03 5f d6")),
+    ("arm64_min", bytes.fromhex("1f 00 01 eb 00 30 81 9a c0 03 5f d6")),
+    ("arm64_madd", bytes.fromhex("00 08 01 9b c0 03 5f d6")),
+    ("arm64_rbit", bytes.fromhex("00 00 c0 da c0 03 5f d6")),
+]
+
+
 class BenchmarkRunner:
-    def __init__(self, mode: int = 64):
-        self.pipeline = ReSynthesisPipeline(mode=mode)
+    def __init__(self, mode: int = 64, arch: str = "x86_64"):
+        self.arch = arch.lower()
+        self.mode = mode
+        self.pipeline = ReSynthesisPipeline(mode=mode, arch=arch)
 
     def run_benchmark(self, routines: Optional[List[Tuple[str, bytes]]] = None) -> BenchmarkSuiteSummary:
-        suite = routines or BENCHMARK_ROUTINES
+        if routines is not None:
+            suite = routines
+        elif self.arch in ("arm64", "aarch64"):
+            suite = ARM64_BENCHMARK_ROUTINES
+        else:
+            suite = BENCHMARK_ROUTINES
         results: List[RoutineBenchmarkResult] = []
         overall_start = time.perf_counter()
 

@@ -30,7 +30,8 @@ class Arm64Lifter:
 
         for idx, insn in enumerate(insns):
             m = insn.mnemonic
-            if m.startswith("b") or m in ("cbz", "cbnz"):
+            is_branch = m == "b" or m.startswith("b.") or m in ("cbz", "cbnz", "tbz", "tbnz", "bl", "blr", "br")
+            if is_branch:
                 if insn.operands and insn.operands[-1].type_name == "imm":
                     target = insn.operands[-1].value
                     if target in addr_to_insn:
@@ -63,18 +64,64 @@ class Arm64Lifter:
     def _resolve_operand(self, op: DecodedOperand) -> Expr:
         if op.type_name == "imm":
             val = op.value & ((1 << op.size_bits) - 1) if op.value < 0 else op.value
-            return Constant(val, op.size_bits)
+            expr = Constant(val, op.size_bits)
         elif op.type_name == "reg":
             canon, offset, width = normalize_reg(op.value)
             full_w = max(width, 64)
             parent_var = Var(canon, full_w)
             if offset == 0 and width == full_w:
-                return parent_var
-            return ExtractExpr(parent_var, offset + width - 1, offset)
+                expr = parent_var
+            else:
+                expr = ExtractExpr(parent_var, offset + width - 1, offset)
         elif op.type_name == "mem":
             addr_expr = self._resolve_mem_addr(op.value)
-            return MemLoad(addr_expr, op.size_bits)
-        raise ValueError(f"Unknown operand type: {op}")
+            expr = MemLoad(addr_expr, op.size_bits)
+        else:
+            raise ValueError(f"Unknown operand type: {op}")
+
+        # Apply extension if present (e.g. uxtw, sxtw, uxtb, etc.)
+        if op.ext_type != 0:
+            ext = op.ext_type
+            w = expr.bit_width
+            if ext in (1, 5) and w > 8:  # byte
+                slice_expr = ExtractExpr(expr, 7, 0)
+                if ext == 1:
+                    expr = ConcatExpr([Constant(0, w - 8), slice_expr], w)
+                else:
+                    sign = ExtractExpr(slice_expr, 7, 7)
+                    sign_pad = IteExpr(BinaryExpr(Op.EQ, sign, Constant(1, 1), 1), Constant((1 << (w - 8)) - 1, w - 8), Constant(0, w - 8), w - 8)
+                    expr = ConcatExpr([sign_pad, slice_expr], w)
+            elif ext in (2, 6) and w > 16:  # halfword
+                slice_expr = ExtractExpr(expr, 15, 0)
+                if ext == 2:
+                    expr = ConcatExpr([Constant(0, w - 16), slice_expr], w)
+                else:
+                    sign = ExtractExpr(slice_expr, 15, 15)
+                    sign_pad = IteExpr(BinaryExpr(Op.EQ, sign, Constant(1, 1), 1), Constant((1 << (w - 16)) - 1, w - 16), Constant(0, w - 16), w - 16)
+                    expr = ConcatExpr([sign_pad, slice_expr], w)
+            elif ext in (3, 7) and w > 32:  # word (32-bit)
+                slice_expr = ExtractExpr(expr, 31, 0)
+                if ext == 3:
+                    expr = ConcatExpr([Constant(0, w - 32), slice_expr], w)
+                else:
+                    sign = ExtractExpr(slice_expr, 31, 31)
+                    sign_pad = IteExpr(BinaryExpr(Op.EQ, sign, Constant(1, 1), 1), Constant((1 << (w - 32)) - 1, w - 32), Constant(0, w - 32), w - 32)
+                    expr = ConcatExpr([sign_pad, slice_expr], w)
+
+        # Apply shift if present
+        if op.shift_type != 0 and op.shift_value > 0:
+            w = expr.bit_width
+            shift_amt = Constant(op.shift_value, w)
+            if op.shift_type == 1:  # LSL
+                expr = BinaryExpr(Op.SHL, expr, shift_amt, w)
+            elif op.shift_type == 3:  # LSR
+                expr = BinaryExpr(Op.SHR, expr, shift_amt, w)
+            elif op.shift_type == 4:  # ASR
+                expr = BinaryExpr(Op.SAR, expr, shift_amt, w)
+            elif op.shift_type == 5:  # ROR
+                expr = BinaryExpr(Op.ROR, expr, shift_amt, w)
+
+        return expr
 
     def _resolve_mem_addr(self, mem: MemRef) -> Expr:
         parts: List[Expr] = []
@@ -142,6 +189,17 @@ class Arm64Lifter:
                 src = self._resolve_operand(ops[1])
                 stmts.extend(self._assign_to_dest(ops[0], src))
 
+        elif m == "movk":
+            if len(ops) >= 2:
+                val = ops[1].value & 0xFFFF
+                shift = ops[1].shift_value
+                w = ops[0].size_bits
+                cur = self._resolve_operand(ops[0])
+                mask = ~((0xFFFF) << shift) & ((1 << w) - 1)
+                cleared = BinaryExpr(Op.AND, cur, Constant(mask, w), w)
+                res = BinaryExpr(Op.OR, cleared, Constant(val << shift, w), w)
+                stmts.extend(self._assign_to_dest(ops[0], res))
+
         elif m == "mvn":
             src = self._resolve_operand(ops[1])
             res = UnaryExpr(Op.NOT, src, ops[0].size_bits)
@@ -153,7 +211,6 @@ class Arm64Lifter:
             stmts.extend(self._assign_to_dest(ops[0], res))
 
         elif m in ("add", "adds"):
-            # 3 operands: dst, src1, src2
             src1 = self._resolve_operand(ops[1])
             src2 = self._resolve_operand(ops[2])
             w = ops[0].size_bits
@@ -182,6 +239,38 @@ class Arm64Lifter:
             op_map = {"and": Op.AND, "ands": Op.AND, "orr": Op.OR, "eor": Op.XOR}
             res = BinaryExpr(op_map[m], src1, src2, w)
             stmts.extend(self._assign_to_dest(ops[0], res))
+            if m == "ands":
+                last_cmp_info["type"] = "cmp"
+                last_cmp_info["op0"] = res
+                last_cmp_info["op1"] = Constant(0, w)
+
+        elif m in ("bic", "bics"):
+            src1 = self._resolve_operand(ops[1])
+            src2 = self._resolve_operand(ops[2])
+            w = ops[0].size_bits
+            not_src2 = UnaryExpr(Op.NOT, src2, w)
+            res = BinaryExpr(Op.AND, src1, not_src2, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+            if m == "bics":
+                last_cmp_info["type"] = "cmp"
+                last_cmp_info["op0"] = res
+                last_cmp_info["op1"] = Constant(0, w)
+
+        elif m == "eon":
+            src1 = self._resolve_operand(ops[1])
+            src2 = self._resolve_operand(ops[2])
+            w = ops[0].size_bits
+            not_src2 = UnaryExpr(Op.NOT, src2, w)
+            res = BinaryExpr(Op.XOR, src1, not_src2, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+
+        elif m == "orn":
+            src1 = self._resolve_operand(ops[1])
+            src2 = self._resolve_operand(ops[2])
+            w = ops[0].size_bits
+            not_src2 = UnaryExpr(Op.NOT, src2, w)
+            res = BinaryExpr(Op.OR, src1, not_src2, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
 
         elif m in ("lsl", "lsr", "asr", "ror"):
             src1 = self._resolve_operand(ops[1])
@@ -195,6 +284,24 @@ class Arm64Lifter:
             src1 = self._resolve_operand(ops[1])
             src2 = self._resolve_operand(ops[2])
             res = BinaryExpr(Op.MUL, src1, src2, ops[0].size_bits)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+
+        elif m == "madd":
+            src1 = self._resolve_operand(ops[1])
+            src2 = self._resolve_operand(ops[2])
+            src3 = self._resolve_operand(ops[3])
+            w = ops[0].size_bits
+            prod = BinaryExpr(Op.MUL, src1, src2, w)
+            res = BinaryExpr(Op.ADD, src3, prod, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+
+        elif m == "msub":
+            src1 = self._resolve_operand(ops[1])
+            src2 = self._resolve_operand(ops[2])
+            src3 = self._resolve_operand(ops[3])
+            w = ops[0].size_bits
+            prod = BinaryExpr(Op.MUL, src1, src2, w)
+            res = BinaryExpr(Op.SUB, src3, prod, w)
             stmts.extend(self._assign_to_dest(ops[0], res))
 
         elif m == "udiv":
@@ -219,6 +326,13 @@ class Arm64Lifter:
             res = UnaryExpr(Op.BSWAP, src, ops[0].size_bits)
             stmts.extend(self._assign_to_dest(ops[0], res))
 
+        elif m == "rbit":
+            src = self._resolve_operand(ops[1])
+            w = ops[0].size_bits
+            bits = [ExtractExpr(src, i, i) for i in range(w)]
+            res = ConcatExpr(bits, w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+
         elif m == "cmp":
             op0 = self._resolve_operand(ops[0])
             op1 = self._resolve_operand(ops[1])
@@ -226,9 +340,16 @@ class Arm64Lifter:
             last_cmp_info["op0"] = op0
             last_cmp_info["op1"] = op1
 
+        elif m == "tst":
+            op0 = self._resolve_operand(ops[0])
+            op1 = self._resolve_operand(ops[1])
+            w = op0.bit_width
+            and_expr = BinaryExpr(Op.AND, op0, op1, w)
+            last_cmp_info["type"] = "cmp"
+            last_cmp_info["op0"] = and_expr
+            last_cmp_info["op1"] = Constant(0, w)
+
         elif m == "csel":
-            # csel dst, src1, src2, cond
-            # Capstone op_str has cond as last word
             parts = insn.op_str.split(",")
             cc = parts[-1].strip().lower() if len(parts) >= 4 else "eq"
             cond = self._build_arm_cond(cc, last_cmp_info)
@@ -245,14 +366,88 @@ class Arm64Lifter:
             ite = IteExpr(cond, Constant(1, w), Constant(0, w), w)
             stmts.extend(self._assign_to_dest(ops[0], ite))
 
-        elif m == "ldr":
-            src = self._resolve_operand(ops[1])
-            stmts.extend(self._assign_to_dest(ops[0], src))
+        elif m in ("cinc", "csinc"):
+            parts = insn.op_str.split(",")
+            cc = parts[-1].strip().lower()
+            cond = self._build_arm_cond(cc, last_cmp_info)
+            w = ops[0].size_bits
+            if m == "cinc":
+                src = self._resolve_operand(ops[1])
+                res = IteExpr(cond, BinaryExpr(Op.ADD, src, Constant(1, w), w), src, w)
+            else:
+                src1 = self._resolve_operand(ops[1])
+                src2 = self._resolve_operand(ops[2])
+                res = IteExpr(cond, src1, BinaryExpr(Op.ADD, src2, Constant(1, w), w), w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
 
-        elif m == "str":
+        elif m in ("cinv", "csinv"):
+            parts = insn.op_str.split(",")
+            cc = parts[-1].strip().lower()
+            cond = self._build_arm_cond(cc, last_cmp_info)
+            w = ops[0].size_bits
+            if m == "cinv":
+                src = self._resolve_operand(ops[1])
+                res = IteExpr(cond, UnaryExpr(Op.NOT, src, w), src, w)
+            else:
+                src1 = self._resolve_operand(ops[1])
+                src2 = self._resolve_operand(ops[2])
+                res = IteExpr(cond, src1, UnaryExpr(Op.NOT, src2, w), w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+
+        elif m in ("cneg", "csneg"):
+            parts = insn.op_str.split(",")
+            cc = parts[-1].strip().lower()
+            cond = self._build_arm_cond(cc, last_cmp_info)
+            w = ops[0].size_bits
+            if m == "cneg":
+                src = self._resolve_operand(ops[1])
+                res = IteExpr(cond, UnaryExpr(Op.NEG, src, w), src, w)
+            else:
+                src1 = self._resolve_operand(ops[1])
+                src2 = self._resolve_operand(ops[2])
+                res = IteExpr(cond, src1, UnaryExpr(Op.NEG, src2, w), w)
+            stmts.extend(self._assign_to_dest(ops[0], res))
+
+        elif m in ("ldr", "ldrb", "ldrh", "ldrsw", "ldrsb", "ldrsh"):
+            src = self._resolve_operand(ops[1])
+            target_w = ops[0].size_bits
+            if m in ("ldrsb", "ldrsh", "ldrsw"):
+                # Sign extension
+                src_w = 8 if m == "ldrsb" else (16 if m == "ldrsh" else 32)
+                slice_val = ExtractExpr(src, src_w - 1, 0)
+                sign = ExtractExpr(slice_val, src_w - 1, src_w - 1)
+                pad_w = target_w - src_w
+                sign_pad = IteExpr(BinaryExpr(Op.EQ, sign, Constant(1, 1), 1), Constant((1 << pad_w) - 1, pad_w), Constant(0, pad_w), pad_w)
+                ext = ConcatExpr([sign_pad, slice_val], target_w)
+                stmts.extend(self._assign_to_dest(ops[0], ext))
+            else:
+                stmts.extend(self._assign_to_dest(ops[0], src))
+
+        elif m in ("str", "strb", "strh"):
             src = self._resolve_operand(ops[0])
             addr = self._resolve_mem_addr(ops[1].value)
-            stmts.append(MemStore(addr, src, ops[0].size_bits))
+            store_w = 8 if m == "strb" else (16 if m == "strh" else ops[0].size_bits)
+            store_src = ExtractExpr(src, store_w - 1, 0) if src.bit_width > store_w else src
+            stmts.append(MemStore(addr, store_src, store_w))
+
+        elif m in ("sxtb", "sxth", "sxtw"):
+            src = self._resolve_operand(ops[1])
+            src_w = 8 if m == "sxtb" else (16 if m == "sxth" else 32)
+            target_w = ops[0].size_bits
+            slice_val = ExtractExpr(src, src_w - 1, 0)
+            sign = ExtractExpr(slice_val, src_w - 1, src_w - 1)
+            pad_w = target_w - src_w
+            sign_pad = IteExpr(BinaryExpr(Op.EQ, sign, Constant(1, 1), 1), Constant((1 << pad_w) - 1, pad_w), Constant(0, pad_w), pad_w)
+            ext = ConcatExpr([sign_pad, slice_val], target_w)
+            stmts.extend(self._assign_to_dest(ops[0], ext))
+
+        elif m in ("uxtb", "uxth"):
+            src = self._resolve_operand(ops[1])
+            src_w = 8 if m == "uxtb" else 16
+            target_w = ops[0].size_bits
+            slice_val = ExtractExpr(src, src_w - 1, 0)
+            ext = ConcatExpr([Constant(0, target_w - src_w), slice_val], target_w)
+            stmts.extend(self._assign_to_dest(ops[0], ext))
 
         elif m == "b":
             target = f"loc_{ops[0].value:x}"
@@ -265,17 +460,21 @@ class Arm64Lifter:
             fallthrough = f"loc_{all_insns[idx + 1].address:x}" if idx + 1 < len(all_insns) else "end"
             stmts.append(Branch(cond, target, fallthrough))
 
-        elif m == "cbz":
+        elif m in ("cbz", "cbnz"):
             reg = self._resolve_operand(ops[0])
-            cond = BinaryExpr(Op.EQ, reg, Constant(0, reg.bit_width), 1)
+            op_cmp = Op.EQ if m == "cbz" else Op.NE
+            cond = BinaryExpr(op_cmp, reg, Constant(0, reg.bit_width), 1)
             target = f"loc_{ops[1].value:x}"
             fallthrough = f"loc_{all_insns[idx + 1].address:x}" if idx + 1 < len(all_insns) else "end"
             stmts.append(Branch(cond, target, fallthrough))
 
-        elif m == "cbnz":
+        elif m in ("tbz", "tbnz"):
             reg = self._resolve_operand(ops[0])
-            cond = BinaryExpr(Op.NE, reg, Constant(0, reg.bit_width), 1)
-            target = f"loc_{ops[1].value:x}"
+            bit_idx = ops[1].value
+            bit_val = ExtractExpr(reg, bit_idx, bit_idx)
+            op_cmp = Op.EQ if m == "tbz" else Op.NE
+            cond = BinaryExpr(op_cmp, bit_val, Constant(0, 1), 1)
+            target = f"loc_{ops[2].value:x}"
             fallthrough = f"loc_{all_insns[idx + 1].address:x}" if idx + 1 < len(all_insns) else "end"
             stmts.append(Branch(cond, target, fallthrough))
 
@@ -314,8 +513,17 @@ class Arm64Lifter:
                 return BinaryExpr(Op.UGT, op0, op1, 1)
             elif cc in ("hs", "cs"):
                 return BinaryExpr(Op.UGE, op0, op1, 1)
+            elif cc in ("mi",):
+                # Negative (SF=1)
+                diff = BinaryExpr(Op.SUB, op0, op1, op0.bit_width)
+                sign = ExtractExpr(diff, op0.bit_width - 1, op0.bit_width - 1)
+                return BinaryExpr(Op.EQ, sign, Constant(1, 1), 1)
+            elif cc in ("pl",):
+                # Positive or zero (SF=0)
+                diff = BinaryExpr(Op.SUB, op0, op1, op0.bit_width)
+                sign = ExtractExpr(diff, op0.bit_width - 1, op0.bit_width - 1)
+                return BinaryExpr(Op.EQ, sign, Constant(0, 1), 1)
         return Constant(1, 1)
 
 
 ARM64Lifter = Arm64Lifter
-

@@ -131,8 +131,10 @@ def cmd_pipeline(args):
 
 
 def cmd_benchmark(args):
-    runner = BenchmarkRunner(mode=args.mode)
-    print(f"[+] Running automated benchmark suite ({len(runner.pipeline.lifter.__class__.__name__)})...")
+    arch = getattr(args, "arch", "x86_64")
+    mode = getattr(args, "mode", 64)
+    runner = BenchmarkRunner(mode=mode, arch=arch)
+    print(f"[+] Running automated SMT benchmark suite ({arch}, {len(runner.pipeline.lifter.__class__.__name__)})...")
     summary = runner.run_benchmark()
     runner.print_report(summary)
     if getattr(args, "output", None):
@@ -313,6 +315,8 @@ def main():
 
     # benchmark
     p_bench = subparsers.add_parser("benchmark", help="Run automated SMT benchmarking suite")
+    p_bench.add_argument("--arch", type=str, default="x86_64", choices=["x86_64", "x86", "arm64", "aarch64"], help="Target architecture")
+    p_bench.add_argument("--mode", "-m", type=int, default=64, choices=[32, 64], help="Disassembly bitness mode")
     p_bench.add_argument("--output", "-o", default=None, help="Output benchmark summary JSON file")
     p_bench.set_defaults(func=cmd_benchmark)
 

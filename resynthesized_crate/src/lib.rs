@@ -342,22 +342,70 @@ pub fn bit_select(mask: u64, a: u64, b: u64) -> u64 {
     return ((mask & a) | ((!mask) & b));
 }
 
-/// Formally synthesized routine `is_power_of_two`.
+/// Determines if an integer is a positive power of two.
+pub fn is_power_of_two(x: u64) -> u64 {
+    return (if (((x as i64) > 0) && ((x & (x - 1)) == 0)) { 1 } else { 0 });
+}
+
+/// Formally synthesized routine `arm64_add_sub`.
+/// Lifted from arm64 binary and proven equivalent via Z3 SMT solving.
+pub fn arm64_add_sub(mut a: u64, mut b: u64, mut c: u64) -> u64 {
+    // add x0, x0, x1
+    a = (a + b);
+    // sub x0, x0, x2
+    a = (a - c);
+    // ret 
+    return a;
+}
+
+/// Formally synthesized routine `arm64_bit_clear`.
+/// Lifted from arm64 binary and proven equivalent via Z3 SMT solving.
+pub fn arm64_bit_clear(mut a: u64, mut b: u64) -> u64 {
+    // bic x0, x0, x1
+    a = (a & (!b));
+    // ret 
+    return a;
+}
+
+/// Formally synthesized routine `arm64_branchless_min`.
+/// Lifted from arm64 binary and proven equivalent via Z3 SMT solving.
+pub fn arm64_branchless_min(mut a: u64, mut b: u64) -> u64 {
+    // cmp x0, x1
+    // csel x0, x0, x1, lo
+    a = (if (a < b) { a } else { b });
+    // ret 
+    return a;
+}
+
+/// Formally synthesized routine `arm64_madd`.
+/// Lifted from arm64 binary and proven equivalent via Z3 SMT solving.
+pub fn arm64_madd(mut a: u64, mut b: u64, mut c: u64) -> u64 {
+    // madd x0, x0, x1, x2
+    a = (c + (a * b));
+    // ret 
+    return a;
+}
+
+/// Formally synthesized routine `arm64_rbit`.
+/// Lifted from arm64 binary and proven equivalent via Z3 SMT solving.
+pub fn arm64_rbit(mut a: u64) -> u64 {
+    // rbit x0, x0
+    a = (((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a & 1) << 1) | ((a >> 1) & 1)) << 1) | ((a >> 2) & 1)) << 1) | ((a >> 3) & 1)) << 1) | ((a >> 4) & 1)) << 1) | ((a >> 5) & 1)) << 1) | ((a >> 6) & 1)) << 1) | ((a >> 7) & 1)) << 1) | ((a >> 8) & 1)) << 1) | ((a >> 9) & 1)) << 1) | ((a >> 10) & 1)) << 1) | ((a >> 11) & 1)) << 1) | ((a >> 12) & 1)) << 1) | ((a >> 13) & 1)) << 1) | ((a >> 14) & 1)) << 1) | ((a >> 15) & 1)) << 1) | ((a >> 16) & 1)) << 1) | ((a >> 17) & 1)) << 1) | ((a >> 18) & 1)) << 1) | ((a >> 19) & 1)) << 1) | ((a >> 20) & 1)) << 1) | ((a >> 21) & 1)) << 1) | ((a >> 22) & 1)) << 1) | ((a >> 23) & 1)) << 1) | ((a >> 24) & 1)) << 1) | ((a >> 25) & 1)) << 1) | ((a >> 26) & 1)) << 1) | ((a >> 27) & 1)) << 1) | ((a >> 28) & 1)) << 1) | ((a >> 29) & 1)) << 1) | ((a >> 30) & 1)) << 1) | ((a >> 31) & 1)) << 1) | ((a >> 32) & 1)) << 1) | ((a >> 33) & 1)) << 1) | ((a >> 34) & 1)) << 1) | ((a >> 35) & 1)) << 1) | ((a >> 36) & 1)) << 1) | ((a >> 37) & 1)) << 1) | ((a >> 38) & 1)) << 1) | ((a >> 39) & 1)) << 1) | ((a >> 40) & 1)) << 1) | ((a >> 41) & 1)) << 1) | ((a >> 42) & 1)) << 1) | ((a >> 43) & 1)) << 1) | ((a >> 44) & 1)) << 1) | ((a >> 45) & 1)) << 1) | ((a >> 46) & 1)) << 1) | ((a >> 47) & 1)) << 1) | ((a >> 48) & 1)) << 1) | ((a >> 49) & 1)) << 1) | ((a >> 50) & 1)) << 1) | ((a >> 51) & 1)) << 1) | ((a >> 52) & 1)) << 1) | ((a >> 53) & 1)) << 1) | ((a >> 54) & 1)) << 1) | ((a >> 55) & 1)) << 1) | ((a >> 56) & 1)) << 1) | ((a >> 57) & 1)) << 1) | ((a >> 58) & 1)) << 1) | ((a >> 59) & 1)) << 1) | ((a >> 60) & 1)) << 1) | ((a >> 61) & 1)) << 1) | ((a >> 62) & 1)) << 1) | ((a >> 63) & 1));
+    // ret 
+    return a;
+}
+
+/// Formally synthesized routine `branchless_cond_inc`.
 /// Lifted from x86_64 binary and proven equivalent via Z3 SMT solving.
-pub fn is_power_of_two(mut a: u64, mut c: u64) -> u64 {
+pub fn branchless_cond_inc(mut a: u64) -> u64 {
     let mut rax: u64 = 0;
-    // test rdi, rdi
-    // setg dl
-    c = ((((c >> 8) & 0xFFFFFFFFFFFFFF) << 8) | (if (((a & a) as i64) > (0 as i64)) { 1 } else { 0 }));
-    // lea rax, [rdi - 1]
-    rax = (a - 1);
-    // test rdi, rax
-    // sete al
-    rax = ((((rax >> 8) & 0xFFFFFFFFFFFFFF) << 8) | (if ((a & rax) == 0) { 1 } else { 0 }));
-    // and eax, edx
-    rax = (((rax & 0xFFFFFFFF) & (c & 0xFFFFFFFF)) & 0xFFFFFFFF);
+    // cmp rdi, 0
+    // setg al
+    rax = ((((rax >> 8) & 0xFFFFFFFFFFFFFF) << 8) | (if ((a as i64) > (0 as i64)) { 1 } else { 0 }));
     // movzx eax, al
     rax = (((rax & 255) & 255) & 0xFFFFFFFF);
+    // add rax, rdi
+    rax = (rax + a);
     // ret 
     return rax;
 }
@@ -534,6 +582,38 @@ mod tests {
         assert_eq!(is_power_of_two(16), 1);
         assert_eq!(is_power_of_two(18), 0);
         assert_eq!(is_power_of_two(0), 0);
+    }
+
+    #[test]
+    fn test_arm64_add_sub() {
+        assert_eq!(arm64_add_sub(10, 25, 5), 30);
+    }
+
+    #[test]
+    fn test_arm64_bit_clear() {
+        assert_eq!(arm64_bit_clear(0b1111, 0b0011), 0b1100);
+    }
+
+    #[test]
+    fn test_arm64_branchless_min() {
+        assert_eq!(arm64_branchless_min(50, 20), 20);
+        assert_eq!(arm64_branchless_min(5, 100), 5);
+    }
+
+    #[test]
+    fn test_arm64_madd() {
+        assert_eq!(arm64_madd(3, 4, 10), 22);
+    }
+
+    #[test]
+    fn test_arm64_rbit() {
+        assert_eq!(arm64_rbit(1), 0x8000000000000000);
+    }
+
+    #[test]
+    fn test_branchless_cond_inc() {
+        assert_eq!(branchless_cond_inc(5), 6);
+        assert_eq!(branchless_cond_inc(0), 0);
     }
 }
 

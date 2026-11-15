@@ -74,10 +74,16 @@ class MemoryAliasAnalyzer:
         s1_val = z3.BitVecVal(size1_bytes, 64)
         s2_val = z3.BitVecVal(size2_bytes, 64)
 
+        # Extend to 128 bits so interval upper bounds never wrap around modulo 2^64
+        a1_ext = z3.ZeroExt(64, a1_bv)
+        a2_ext = z3.ZeroExt(64, a2_bv)
+        s1_ext = z3.ZeroExt(64, s1_val)
+        s2_ext = z3.ZeroExt(64, s2_val)
+
         # Overlap formula: (a1 < a2 + s2) and (a2 < a1 + s1) using unsigned comparison
         overlap_cond = z3.And(
-            z3.ULT(a1_bv, a2_bv + s2_val),
-            z3.ULT(a2_bv, a1_bv + s1_val)
+            z3.ULT(a1_ext, a2_ext + s2_ext),
+            z3.ULT(a2_ext, a1_ext + s1_ext)
         )
 
         solver = z3.Solver()
@@ -121,11 +127,12 @@ class MemoryAliasAnalyzer:
 
         # 3. If overlap is SAT, test if non-overlap is also SAT (May Alias)
         cex: Dict[str, int] = {}
-        model = solver.model()
-        for name, sym in state.inputs.items():
-            val = model.eval(sym, model_completion=True)
-            if hasattr(val, "as_long"):
-                cex[name] = val.as_long()
+        if check_overlap == z3.sat:
+            model = solver.model()
+            for name, sym in state.inputs.items():
+                val = model.eval(sym, model_completion=True)
+                if hasattr(val, "as_long"):
+                    cex[name] = val.as_long()
         solver.pop()
 
         return AliasQuery(
@@ -134,8 +141,8 @@ class MemoryAliasAnalyzer:
             addr2_expr=addr2,
             size2_bytes=size2_bytes,
             result=AliasResult.MAY_ALIAS,
-            theorem=f"∃ inputs . [{addr1}..+{size1_bytes}) ∩ [{addr2}..+{size2_bytes}) ≠ ∅",
-            counterexample=cex
+            theorem=f"∃ inputs . [{addr1}..+{size1_bytes}) ∩ [{addr2}..+{size2_bytes}) ≠ ∅" if check_overlap == z3.sat else "Timeout during overlap analysis",
+            counterexample=cex if cex else None
         )
 
     def analyze_cfg_memory_references(self, cfg: ControlFlowGraph) -> AliasReport:

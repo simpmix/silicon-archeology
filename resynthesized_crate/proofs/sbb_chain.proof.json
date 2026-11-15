@@ -27,7 +27,7 @@
     "rax",
     "rdx"
   ],
-  "verification_time_ms": 3.292699984740466,
-  "proof_hash": "28291d74c1e0f44e071e372a107f401bfe43368326fbe1db168a716ae551f841",
+  "verification_time_ms": 6.476400012616068,
+  "proof_hash": "3697f0bc00160b99eb3ad5d1325956852323a0538b12c6c9fd330bb269e0a4f5",
   "counterexample": null
 }

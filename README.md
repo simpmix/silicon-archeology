@@ -5,7 +5,7 @@
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021%20Edition-orange.svg)](https://www.rust-lang.org)
 [![SMT Solver: Z3 5.x](https://img.shields.io/badge/SMT%20Solver-Z3%205.x-purple.svg)](https://github.com/Z3Prover/z3)
 [![Formal Verification: BitVec Theory](https://img.shields.io/badge/Formal%20Verification-QFBV%20Sound-success.svg)](#mathematical-formulation)
-[![Tests: 101 Passing](https://img.shields.io/badge/Tests-101%20Passing%20(100%25)-brightgreen.svg)](#-test-suite)
+[![Tests: 111 Passing](https://img.shields.io/badge/Tests-111%20Passing%20(100%25)-brightgreen.svg)](#-test-suite)
 [![Architectures: x86__64%20%7C%20ARM64](https://img.shields.io/badge/Arch-x86__64%20%7C%20ARM64-blueviolet.svg)](#-multi-architecture-lifting)
 
 > **Decompilers produce readable pseudocode. Silicon Archeology synthesizes mathematically proven, memory-safe, compilable Rust.**
@@ -156,7 +156,7 @@ python -m silicon_archeology.cli inspect "48 89 f8 48 01 f0 c3"
 
 ---
 
-## 📦 Re-Synthesized Rust Crate Showcase (30 Verified Routines)
+## 📦 Re-Synthesized Rust Crate Showcase (36 Verified Routines)
 
 Run Example 4 to regenerate the entire verified library under `resynthesized_crate/`:
 
@@ -167,8 +167,9 @@ cargo check
 cargo test
 ```
 
-The generated crate contains 30 proven routines:
-- **Arithmetic & Multi-Register**: `add_two`, `polynomial_eval`, `adc_chain`, `sbb_chain`, `mul64_full`, `mul_high64`, `unsigned_divide`, `signed_divide`, `unsigned_modulo`, `atomic_xadd`.
+The generated crate contains 36 proven routines:
+- **Arithmetic & Multi-Register**: `add_two`, `polynomial_eval`, `adc_chain`, `sbb_chain`, `mul64_full`, `mul_high64`, `unsigned_divide`, `signed_divide`, `unsigned_modulo`, `atomic_xadd`, `branchless_cond_inc`.
+- **ARM64 Native Operations**: `arm64_add_sub`, `arm64_bit_clear` (hardware BIC), `arm64_branchless_min` (hardware CSEL lo), `arm64_madd` (fused multiply-accumulate), `arm64_rbit` (hardware 64-bit reversal).
 - **Bit-Twiddling & Manipulations**: `isolate_lowest_bit`, `reset_lowest_bit`, `and_not`, `count_trailing_zeros`, `count_leading_zeros`, `popcount_builtin`, `byte_swap_64`, `bit_select`, `is_power_of_two`, `branchless_midpoint`, `bmi2_shlx`, `shld_step`, `shrd_step`.
 - **Branchless Logic**: `branchless_min`, `clamp_val`, `branchless_abs`, `branchless_signum`.
 - **Ciphers & Hashes**: `murmur3_fmix64`, `tea_round`, `rc4_prga_step`.
@@ -203,14 +204,14 @@ Every synthesis generates a cryptographic JSON certificate:
 
 ## 🧪 Test Suite
 
-Silicon Archeology includes an exhaustive test suite of **101 automated tests** covering the full engine:
+Silicon Archeology includes an exhaustive test suite of **111 automated tests** covering the full engine:
 
 ```bash
 pytest tests/ -v
 ```
 
 ```text
-============================= 101 passed in 43.87s =============================
+============================= 111 passed in 40.84s =============================
 ```
 
 ---

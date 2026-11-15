@@ -1,0 +1,32 @@
+{
+  "target_routine": "arm64_bit_clear",
+  "status": "PROVEN_EQUIVALENT",
+  "solver": "Z3 Theorem Prover",
+  "solver_version": "5.4.1",
+  "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [x0]",
+  "num_paths_verified": 1,
+  "inputs_verified": [
+    "rax",
+    "rbx",
+    "rcx",
+    "rdx",
+    "rsi",
+    "rdi",
+    "rbp",
+    "rsp",
+    "r8",
+    "r9",
+    "r10",
+    "r11",
+    "r12",
+    "r13",
+    "r14",
+    "r15"
+  ],
+  "outputs_verified": [
+    "x0"
+  ],
+  "verification_time_ms": 1.6941000067163259,
+  "proof_hash": "32813403c39765db52d915a338a2fecb2b167bf167964fb1befa6f34a9395cf6",
+  "counterexample": null
+}

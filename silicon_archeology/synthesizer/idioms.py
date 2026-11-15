@@ -267,24 +267,30 @@ class IdiomMatcher:
 
     @staticmethod
     def match_is_power_of_two(cfg: ControlFlowGraph) -> Optional[RustFunction]:
-        """Matches is_power_of_two: (x > 0) && ((x & (x - 1)) == 0)."""
+        """Matches is_power_of_two: (x as i64 > 0) && ((x & (x - 1)) == 0)."""
         if len(cfg.blocks) <= 2:
             from silicon_archeology.ir.instructions import Comment
             mnems = {s.text.split()[0].lower() for bb in cfg.blocks.values() for s in bb.stmts if isinstance(s, Comment)}
             all_text = " ".join(str(s) for bb in cfg.blocks.values() for s in bb.stmts).lower()
-            if "power_of_two" in all_text or ("dec" in mnems and "setz" in mnems and "and" in mnems):
+            has_setg_sete = ("setg" in mnems and "sete" in mnems and "and" in mnems)
+            has_dec_setz = ("dec" in mnems and "setz" in mnems and "and" in mnems)
+            if "power_of_two" in all_text or has_setg_sete or has_dec_setz:
                 return RustFunction(
                     name="is_power_of_two",
                     params=[RustParam("x", "u64")],
                     return_type="u64",
                     body=[
                         RustReturn(RustIfExpr(
-                            cond=RustMethodCall(RustIdent("x"), "is_power_of_two"),
+                            cond=RustBinaryOp(
+                                "&&",
+                                RustBinaryOp(">", RustCast(RustIdent("x"), "i64"), RustLiteral(0)),
+                                RustBinaryOp("==", RustBinaryOp("&", RustIdent("x"), RustBinaryOp("-", RustIdent("x"), RustLiteral(1))), RustLiteral(0))
+                            ),
                             then_expr=RustLiteral(1),
                             else_expr=RustLiteral(0)
                         ))
                     ],
-                    doc_comment="Determines if an integer is a non-zero power of two using `x.is_power_of_two()`."
+                    doc_comment="Determines if an integer is a positive power of two."
                 )
         return None
 

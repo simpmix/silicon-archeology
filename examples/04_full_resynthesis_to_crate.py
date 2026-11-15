@@ -165,6 +165,42 @@ ROUTINES = [
         "name": "is_power_of_two",
         "bytes": bytes.fromhex("48 85 ff 0f 9f c2 48 8d 47 ff 48 85 c7 0f 94 c0 21 d0 0f b6 c0 c3"),
         "doc": "Branchless test if 64-bit integer is a positive power of two."
+    },
+    {
+        "name": "arm64_add_sub",
+        "bytes": bytes.fromhex("00 00 01 8b 00 00 02 cb c0 03 5f d6"),
+        "doc": "ARM64 compound arithmetic evaluation: (a + b) - c.",
+        "arch": "arm64"
+    },
+    {
+        "name": "arm64_bit_clear",
+        "bytes": bytes.fromhex("00 00 21 8a c0 03 5f d6"),
+        "doc": "ARM64 hardware bit clear (a & ~b) via BIC instruction.",
+        "arch": "arm64"
+    },
+    {
+        "name": "arm64_branchless_min",
+        "bytes": bytes.fromhex("1f 00 01 eb 00 30 81 9a c0 03 5f d6"),
+        "doc": "ARM64 branchless unsigned minimum selection using CMP and CSEL lo.",
+        "arch": "arm64"
+    },
+    {
+        "name": "arm64_madd",
+        "bytes": bytes.fromhex("00 08 01 9b c0 03 5f d6"),
+        "doc": "ARM64 fused multiply-accumulate: c + (a * b) via MADD instruction.",
+        "arch": "arm64"
+    },
+    {
+        "name": "arm64_rbit",
+        "bytes": bytes.fromhex("00 00 c0 da c0 03 5f d6"),
+        "doc": "ARM64 hardware 64-bit reversal via RBIT instruction.",
+        "arch": "arm64"
+    },
+    {
+        "name": "branchless_cond_inc",
+        "bytes": bytes.fromhex("48 83 ff 00 0f 9f c0 0f b6 c0 48 01 f8 c3"),
+        "doc": "Branchless conditional increment: (a > 0) ? a + 1 : a.",
+        "arch": "x86_64"
     }
 ]
 
@@ -182,7 +218,8 @@ def main():
     os.makedirs(src_dir, exist_ok=True)
     os.makedirs(proofs_dir, exist_ok=True)
 
-    pipeline = ReSynthesisPipeline(mode=64)
+    pipeline_x86 = ReSynthesisPipeline(mode=64, arch="x86_64")
+    pipeline_arm64 = ReSynthesisPipeline(arch="arm64")
     synthesized_functions = []
     proof_summaries = []
 
@@ -190,8 +227,10 @@ def main():
         name = routine["name"]
         code = routine["bytes"]
         doc = routine["doc"]
+        arch = routine.get("arch", "x86_64")
+        pipeline = pipeline_arm64 if arch in ("arm64", "aarch64") else pipeline_x86
 
-        print(f"\n[*] Processing: {name} ({len(code)} bytes)")
+        print(f"\n[*] Processing: {name} ({arch}, {len(code)} bytes)")
         res = pipeline.process(name=name, code_bytes=code)
 
         print(f"    Equivalence Status: {res.certificate.status}")
@@ -419,6 +458,38 @@ mod tests {
         assert_eq!(is_power_of_two(16), 1);
         assert_eq!(is_power_of_two(18), 0);
         assert_eq!(is_power_of_two(0), 0);
+    }
+
+    #[test]
+    fn test_arm64_add_sub() {
+        assert_eq!(arm64_add_sub(10, 25, 5), 30);
+    }
+
+    #[test]
+    fn test_arm64_bit_clear() {
+        assert_eq!(arm64_bit_clear(0b1111, 0b0011), 0b1100);
+    }
+
+    #[test]
+    fn test_arm64_branchless_min() {
+        assert_eq!(arm64_branchless_min(50, 20), 20);
+        assert_eq!(arm64_branchless_min(5, 100), 5);
+    }
+
+    #[test]
+    fn test_arm64_madd() {
+        assert_eq!(arm64_madd(3, 4, 10), 22);
+    }
+
+    #[test]
+    fn test_arm64_rbit() {
+        assert_eq!(arm64_rbit(1), 0x8000000000000000);
+    }
+
+    #[test]
+    fn test_branchless_cond_inc() {
+        assert_eq!(branchless_cond_inc(5), 6);
+        assert_eq!(branchless_cond_inc(0), 0);
     }
 }
 

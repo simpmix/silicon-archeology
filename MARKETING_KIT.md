@@ -41,9 +41,9 @@ SAT = Concrete counterexample found.
 
 ### Tweet 5 (Benchmarks & Standalone Crate)
 Every synthesis emits a cryptographic `.proof.json` certificate with a SHA-256 theorem hash.
-We built a standalone crate with 30 formally proven routines (ciphers, hash mixers, carry-chains, bit-twiddling).
+We built a standalone crate with 36 formally proven routines (ciphers, hash mixers, carry-chains, bit-twiddling, ARM64 native ops).
 Average SMT solving latency: 4.42 ms.
-101 tests passing. `cargo check` PASS.
+111 tests passing. `cargo check` and `cargo check --tests` PASS.
 
 Check it out and star the repo! ⭐
 https://github.com/simpmix/silicon-archeology

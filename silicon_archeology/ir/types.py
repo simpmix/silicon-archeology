@@ -113,6 +113,8 @@ ARM64_REGISTER_MAP: Dict[str, Tuple[str, int, int]] = {
     **{f"x{i}": (f"x{i}", 0, 64) for i in range(31)},
     "sp": ("sp", 0, 64),
     "xzr": ("xzr", 0, 64),
+    "lr": ("x30", 0, 64),
+    "fp": ("x29", 0, 64),
     **{f"w{i}": (f"x{i}", 0, 32) for i in range(31)},
     "wzr": ("xzr", 0, 32),
 }

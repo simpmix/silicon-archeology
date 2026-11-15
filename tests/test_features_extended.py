@@ -90,6 +90,16 @@ def test_is_power_of_two():
     assert res.is_equivalent is True
     assert res.certificate.status == "PROVEN_EQUIVALENT"
     assert res.compiles_successfully is True
+    assert "(x: u64)" in res.rust_source
+
+
+def test_branchless_cond_inc():
+    pipe = ReSynthesisPipeline(mode=64)
+    code = bytes.fromhex("48 83 ff 00 0f 9f c0 0f b6 c0 48 01 f8 c3")
+    res = pipe.process("branchless_cond_inc", code)
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
 
 
 def test_sse2_simd_lifting():
@@ -190,4 +200,28 @@ def test_inductive_loop_proof_hash():
     cert = verifier.verify_loop_invariant(lp, cfg)
     assert cert.status == "PROVEN_INDUCTIVE"
     assert len(cert.proof_hash) == 64
+
+
+def test_arm64_benchmark_runner():
+    runner = BenchmarkRunner(arch="arm64")
+    sub = [
+        ("arm64_add", bytes.fromhex("00 00 01 8b c0 03 5f d6")),
+        ("arm64_bic", bytes.fromhex("00 00 21 8a c0 03 5f d6")),
+    ]
+    summary = runner.run_benchmark(routines=sub)
+    assert summary.total_routines == 2
+    assert summary.proven_count == 2
+    assert summary.mean_solving_ms > 0
+
+
+def test_memory_alias_wrap_around_protection():
+    from silicon_archeology.symbolic.alias_analyzer import MemoryAliasAnalyzer, AliasResult
+    from silicon_archeology.ir.instructions import Constant
+    analyzer = MemoryAliasAnalyzer()
+    # High address near 2^64-1 vs low address
+    addr_high = Constant(0xFFFFFFFFFFFFFFF8, 64)
+    addr_low = Constant(0x0000000000000004, 64)
+    res = analyzer.query_alias(addr_high, 8, addr_low, 8)
+    # Must NOT alias even with wrap around
+    assert res.result == AliasResult.NO_ALIAS
 

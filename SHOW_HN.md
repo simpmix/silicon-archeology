@@ -23,7 +23,7 @@ Instead of heuristic AST transformations, Silicon Archeology:
 6. **Formally proves mathematical equivalence**: It asks Z3 whether there exists *any* 64-bit input valuation where the synthesized Rust code produces a different output from the binary:
    $$\exists \vec{x} \text{ s.t. } \mathcal{F}_{\text{binary}}(\vec{x}) \neq \mathcal{F}_{\text{rust}}(\vec{x})$$
    When Z3 answers **UNSAT**, it generates a cryptographic proof certificate (`.proof.json`). If it answers **SAT**, it gives you the exact counterexample input that broke equivalence.
-7. **Generates a standalone, compilable Rust crate** (`Cargo.toml` + `src/lib.rs`) with 30 formally proven routines and compiles it natively with `rustc` / `cargo check`.
+7. **Generates a standalone, compilable Rust crate** (`Cargo.toml` + `src/lib.rs`) with 36 formally proven routines and compiles it natively with `rustc` / `cargo check`.
 
 ### Example: Branchless Minimum
 

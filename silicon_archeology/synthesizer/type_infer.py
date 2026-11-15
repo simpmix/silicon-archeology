@@ -121,6 +121,22 @@ class TypeInference:
                 if isinstance(inner, BinaryExpr) and inner.op in (Op.XOR, Op.SUB):
                     if str(inner.left) == str(inner.right):
                         return reads
+
+            # If partial register write like Concat([Extract(dest, hi, lo), slice_val]),
+            # the read of dest's preserved slice is an internal artifact, not an external parameter.
+            dest_name = stmt.dest.name
+            if isinstance(expr, ConcatExpr):
+                extract_dest_parts = [p for p in expr.parts if isinstance(p, ExtractExpr) and isinstance(p.expr, Var) and p.expr.name == dest_name]
+                other_parts = [p for p in expr.parts if not (isinstance(p, ExtractExpr) and isinstance(p.expr, Var) and p.expr.name == dest_name)]
+                if other_parts:
+                    other_reads: Set[str] = set()
+                    for op in other_parts:
+                        self._expr_reads(op, other_reads)
+                    if dest_name not in other_reads:
+                        for p in other_parts:
+                            self._expr_reads(p, reads)
+                        return reads
+
             self._expr_reads(stmt.expr, reads)
         elif isinstance(stmt, MemStore):
             self._expr_reads(stmt.addr, reads)

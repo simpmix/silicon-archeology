@@ -26,7 +26,7 @@
   "outputs_verified": [
     "rax"
   ],
-  "verification_time_ms": 50.50770001253113,
-  "proof_hash": "8d65e2918e6a9fb0597acccdd4f914b797fd9fee2b90d3305f897a35b619115f",
+  "verification_time_ms": 61.998399993171915,
+  "proof_hash": "a3a7793ddb37f780ead869633c6c7283a76779a8591c406ae3f294cf837fea4c",
   "counterexample": null
 }

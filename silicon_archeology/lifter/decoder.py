@@ -13,6 +13,9 @@ class DecodedOperand:
     type_name: str          # 'reg', 'imm', 'mem'
     value: Any              # reg name str, int imm, or MemRef
     size_bits: int          # 8, 16, 32, 64
+    shift_type: int = 0     # Capstone shift type (e.g. ARM64_SFT_LSL)
+    shift_value: int = 0    # shift amount
+    ext_type: int = 0       # Capstone ext type (e.g. ARM64_EXT_UXTW)
 
 
 @dataclass
@@ -68,25 +71,38 @@ class Disassembler:
 
         for insn in self.md.disasm(code, base_address):
             operands: List[DecodedOperand] = []
+            mnem = insn.mnemonic.lower()
             for op in insn.operands:
                 size_bits = getattr(op, "size", 0) * 8
                 if size_bits == 0:
                     size_bits = 64
+                shift_type = getattr(getattr(op, "shift", None), "type", 0)
+                shift_value = getattr(getattr(op, "shift", None), "value", 0)
+                ext_type = getattr(op, "ext", 0)
                 if op.type == reg_type:
                     reg_name = insn.reg_name(op.reg)
                     if is_arm64:
                         if reg_name.startswith("w"):
                             size_bits = 32
-                        elif reg_name.startswith("x") or reg_name == "sp":
-                            size_bits = 64
-                    operands.append(DecodedOperand("reg", reg_name, size_bits))
+                        elif reg_name.startswith("x") or reg_name in ("sp", "xzr", "wzr", "lr", "fp"):
+                            size_bits = 32 if reg_name == "wzr" else 64
+                    operands.append(DecodedOperand("reg", reg_name, size_bits, shift_type, shift_value, ext_type))
                 elif op.type == imm_type:
-                    operands.append(DecodedOperand("imm", op.imm, size_bits))
+                    operands.append(DecodedOperand("imm", op.imm, size_bits, shift_type, shift_value, ext_type))
                 elif op.type == mem_type:
                     base = insn.reg_name(op.mem.base) if op.mem.base != 0 else None
                     index = insn.reg_name(op.mem.index) if getattr(op.mem, "index", 0) != 0 else None
                     scale = getattr(op.mem, "scale", 1)
                     disp = getattr(op.mem, "disp", 0)
+                    if is_arm64:
+                        if mnem.endswith("b"):
+                            size_bits = 8
+                        elif mnem.endswith("h"):
+                            size_bits = 16
+                        elif mnem.endswith("sw") or (operands and operands[0].size_bits == 32):
+                            size_bits = 32
+                        else:
+                            size_bits = 64
                     mem_ref = MemRef(
                         base=base,
                         index=index,
@@ -94,7 +110,7 @@ class Disassembler:
                         disp=disp,
                         size_bits=size_bits
                     )
-                    operands.append(DecodedOperand("mem", mem_ref, size_bits))
+                    operands.append(DecodedOperand("mem", mem_ref, size_bits, shift_type, shift_value, ext_type))
 
             results.append(DecodedInsn(
                 address=insn.address,

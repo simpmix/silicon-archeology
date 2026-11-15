@@ -118,3 +118,43 @@ def test_arm64_pipeline_mul():
     assert res.is_equivalent is True
     assert res.certificate.status == "PROVEN_EQUIVALENT"
     assert res.compiles_successfully is True
+
+
+def test_arm64_pipeline_bic():
+    pipe = ReSynthesisPipeline(arch="arm64")
+    # bic x0, x0, x1; ret (x0 = x0 & ~x1)
+    code = bytes.fromhex("00 00 21 8a c0 03 5f d6")
+    res = pipe.process("arm64_bic", code)
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
+
+
+def test_arm64_shifted_register_add():
+    lifter = ARM64Lifter()
+    # add x0, x1, x2, lsl #3; ret
+    code = bytes.fromhex("20 0c 02 8b c0 03 5f d6")
+    cfg = lifter.lift_bytes(code)
+    stmts = list(cfg.blocks.values())[0].stmts
+    add_stmt = [s for s in stmts if hasattr(s, "dest") and s.dest.name == "x0"][0]
+    assert "<<" in str(add_stmt.expr)
+
+
+def test_arm64_madd():
+    pipe = ReSynthesisPipeline(arch="arm64")
+    # madd x0, x0, x1, x2; ret -> x0 = x2 + (x0 * x1)
+    code = bytes.fromhex("00 08 01 9b c0 03 5f d6")
+    res = pipe.process("arm64_madd", code)
+    assert res.is_equivalent is True
+    assert res.certificate.status == "PROVEN_EQUIVALENT"
+    assert res.compiles_successfully is True
+
+
+def test_arm64_movk():
+    lifter = ARM64Lifter()
+    # movz x0, #0; movk x0, #0x1234, lsl #16; ret
+    code = bytes.fromhex("00 00 80 d2 80 46 a2 f2 c0 03 5f d6")
+    cfg = lifter.lift_bytes(code)
+    block = list(cfg.blocks.values())[0]
+    assigns = [s for s in block.stmts if hasattr(s, "dest") and s.dest.name == "x0"]
+    assert len(assigns) == 2

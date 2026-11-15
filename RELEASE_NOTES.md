@@ -53,13 +53,13 @@ We are thrilled to announce the release of **Silicon Archeology v0.3.0 "Bulletpr
 - `python -m silicon_archeology.cli cert-verify <file.proof.json>`: Independent formal audit tool validating proof certificates and SHA-256 hashes.
 - `python -m silicon_archeology.cli inspect <bytes>`: Deep reverse-engineering inspector displaying disassembly, basic blocks, dominator tree, loop back-edges, and symbolic transfer functions.
 
-### 8. 30 Verified Routines in Standalone Rust Crate
-- `resynthesized_crate/src/lib.rs` expanded from 22 to **30 formally proven routines**.
-- 30 cryptographic proof certificates in `resynthesized_crate/proofs/`.
-- 100% clean `cargo check` and `cargo test` pass.
+### 8. 36 Verified Routines in Standalone Rust Crate
+- `resynthesized_crate/src/lib.rs` expanded from 22 to **36 formally proven routines** across x86_64 and ARM64.
+- 36 cryptographic proof certificates in `resynthesized_crate/proofs/`.
+- 100% clean `cargo check` and `cargo check --tests` pass.
 
-### 9. 101 Automated Tests Passing (Zero Regressions)
-- Repository test suite expanded from 67 to **101 automated tests**, maintaining 100% pass rate.
+### 9. 111 Automated Tests Passing (Zero Regressions)
+- Repository test suite expanded from 67 to **111 automated tests**, maintaining 100% pass rate.
 
 ---
 

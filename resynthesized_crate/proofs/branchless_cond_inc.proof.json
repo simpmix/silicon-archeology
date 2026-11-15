@@ -1,0 +1,32 @@
+{
+  "target_routine": "branchless_cond_inc",
+  "status": "PROVEN_EQUIVALENT",
+  "solver": "Z3 Theorem Prover",
+  "solver_version": "5.4.1",
+  "theorem": "\u2200 inputs . F_bin(inputs) \u2261 F_rust(inputs) on [rax]",
+  "num_paths_verified": 1,
+  "inputs_verified": [
+    "rax",
+    "rbx",
+    "rcx",
+    "rdx",
+    "rsi",
+    "rdi",
+    "rbp",
+    "rsp",
+    "r8",
+    "r9",
+    "r10",
+    "r11",
+    "r12",
+    "r13",
+    "r14",
+    "r15"
+  ],
+  "outputs_verified": [
+    "rax"
+  ],
+  "verification_time_ms": 2.164500008802861,
+  "proof_hash": "0c3c43ac1bfe7d28e84306010ce07bfb3be6637381d7d83ba75c64c8c9edc709",
+  "counterexample": null
+}
